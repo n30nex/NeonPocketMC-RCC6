@@ -69,7 +69,8 @@ Download assets from the [1.0 RC1 release](https://github.com/n30nex/RadioCore2-
 | File | Use | Flash offset | Settings |
 |---|---|---:|---|
 | `RadioCore2-RCC6-1.0-RC1-app.bin` | Recommended update for an already provisioned RCC6 | `0x10000` | Preserved |
-| `RadioCore2-RCC6-1.0-RC1-full-recovery-wipes-settings.bin` | Complete bootloader/partition/app recovery image | `0x0` | **Erased** |
+| `RadioCore2-RCC6-1.0-RC1-full-recovery-preserves-meshcore-settings.bin` | Complete bootloader/partition/app recovery image | `0x0` | MeshCore preserved; BLE bond reset |
+| `RadioCore2-RCC6-1.0-RC1-third-party-licenses.zip` | Third-party license texts and exact source/relinking pointers | — | — |
 | `SHA256SUMS.txt` | Release integrity checks | — | — |
 
 ### Recommended: settings-preserving update
@@ -92,11 +93,11 @@ This writes only the application partition. It does not erase the existing node 
 ### Full recovery
 
 > [!WARNING]
-> The full-recovery image overwrites the complete merged image range and **wipes persisted MeshCore identity, settings, and BLE bonds**. Back up anything important first. After recovery, forget the old bond on the phone and pair again using the PIN currently shown on the TFT.
+> The full-recovery image overwrites the bootloader, partition table, NVS, OTA metadata, and application range. It resets BLE bonds, but it does **not** erase the SPIFFS partition that stores MeshCore identity, contacts, channels, pairing PIN, and preferences. Forget the old phone bond after recovery, then pair again using the PIN currently shown on the TFT. This is not a factory-reset image.
 
 ```shell
-esptool --chip esp32c6 --port COM21 write-flash 0x0 RadioCore2-RCC6-1.0-RC1-full-recovery-wipes-settings.bin
-esptool --chip esp32c6 --port COM21 verify-flash 0x0 RadioCore2-RCC6-1.0-RC1-full-recovery-wipes-settings.bin
+esptool --chip esp32c6 --port COM21 write-flash 0x0 RadioCore2-RCC6-1.0-RC1-full-recovery-preserves-meshcore-settings.bin
+esptool --chip esp32c6 --port COM21 verify-flash 0x0 RadioCore2-RCC6-1.0-RC1-full-recovery-preserves-meshcore-settings.bin
 ```
 
 Do not add `erase-flash` or `--erase-all` to the app-only update.
@@ -143,7 +144,7 @@ Still to qualify before final 1.0:
 
 RadioCore²-RCC6 is a community firmware build, not an official Heltec or MeshCore release.
 
-It is built on [MeshCore](https://github.com/meshcore-dev/MeshCore) and retains the upstream MIT license and copyright notice in [`license.txt`](license.txt). Dependency licenses and exact source pointers are listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). Thanks to the MeshCore contributors and Heltec RadioCore beta community.
+It is built on [MeshCore](https://github.com/meshcore-dev/MeshCore) and retains the upstream MIT license and copyright notice in [`license.txt`](license.txt). Dependency licenses and exact source/relinking pointers are listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and [`LICENSES/README.md`](LICENSES/README.md). Thanks to the MeshCore contributors and Heltec RadioCore beta community.
 
 ## Contributing
 
