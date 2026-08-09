@@ -1,4 +1,5 @@
 #include <Arduino.h>   // needed for PlatformIO
+#include <stdlib.h>
 #include <Mesh.h>
 #include "MyMesh.h"
 
@@ -45,6 +46,15 @@ MultiSerialInterface interface_manager;
   #endif
 #endif
 
+// include RCC6 Wi-Fi AP/LAN Web companion interface
+#ifdef RCC6_WEB_AP
+  #include <helpers/esp32/SerialWebInterface.h>
+  SerialWebInterface web_interface;
+  #ifndef TCP_PORT
+    #define TCP_PORT 5000
+  #endif
+#endif
+
 // include usb interface
 #if defined(ENABLE_USB_INTERFACE)
   #include <helpers/ArduinoSerialInterface.h>
@@ -84,6 +94,9 @@ MultiSerialInterface interface_manager;
   DataStore store(LittleFS, rtc_clock);
 #elif defined(ESP32)
   #include <SPIFFS.h>
+  #ifdef NEONPOCKET_SAFE_SPIFFS_BOOTSTRAP
+    #include <esp_partition.h>
+  #endif
   DataStore store(SPIFFS, rtc_clock);
 #endif
 
@@ -104,8 +117,78 @@ MyMesh the_mesh(radio_driver, fast_rng, rtc_clock, tables, store
 /* END GLOBAL OBJECTS */
 
 void halt() {
-  while (1) ;
+  while (1) {
+    delay(1000);
+  }
 }
+
+#ifdef DISPLAY_CLASS
+static void showFatal(DisplayDriver* display_driver, const char* line1, const char* line2) {
+  if (display_driver == NULL) return;
+  if (!display_driver->isOn()) display_driver->turnOn();
+  if (!display_driver->isOn()) return;
+  display_driver->startFrame();
+  display_driver->setTextSize(1);
+  display_driver->setColor(UIColor::warning_txt);
+  display_driver->drawTextCentered(display_driver->width() / 2,
+      display_driver->height() / 2 - 10, line1);
+  display_driver->setColor(UIColor::primary_txt);
+  display_driver->drawTextCentered(display_driver->width() / 2,
+      display_driver->height() / 2 + 8, line2);
+  display_driver->endFrame();
+}
+#endif
+
+#ifdef NEONPOCKET_MEMORY_GATE_BYTES
+static unsigned long next_neon_memory_probe = 0;
+
+static bool probeNeonMemory() {
+  void* probe = malloc(NEONPOCKET_MEMORY_GATE_BYTES);
+  if (probe == NULL) return false;
+  free(probe);
+  return true;
+}
+#endif
+
+#if defined(ESP32) && defined(NEONPOCKET_SAFE_SPIFFS_BOOTSTRAP)
+static bool isSpiffsPartitionErased() {
+  const esp_partition_t* partition = esp_partition_find_first(
+      ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, nullptr);
+  if (partition == nullptr) {
+    Serial.println("ERROR: SPIFFS partition not found");
+    return false;
+  }
+
+  static uint8_t chunk[1024];
+  for (size_t offset = 0; offset < partition->size; offset += sizeof(chunk)) {
+    const size_t remaining = partition->size - offset;
+    const size_t length = remaining < sizeof(chunk) ? remaining : sizeof(chunk);
+    if (esp_partition_read(partition, offset, chunk, length) != ESP_OK) {
+      Serial.println("ERROR: SPIFFS partition read failed");
+      return false;
+    }
+    for (size_t i = 0; i < length; i++) {
+      if (chunk[i] != 0xFF) return false;
+    }
+  }
+  return true;
+}
+
+static bool beginSpiffsPreservingData() {
+  if (SPIFFS.begin(false)) return true;
+  if (!isSpiffsPartitionErased()) {
+    Serial.println("ERROR: SPIFFS mount failed; nonblank data was not formatted");
+    return false;
+  }
+
+  Serial.println("SPIFFS: blank partition detected; creating filesystem");
+  if (!SPIFFS.format()) {
+    Serial.println("ERROR: SPIFFS format failed");
+    return false;
+  }
+  return SPIFFS.begin(false);
+}
+#endif
 
 /* WIFI RECONNECT TRACKERS */
 #if defined(ESP32) && defined(WIFI_SSID)
@@ -115,7 +198,14 @@ void halt() {
 
 void setup() {
   Serial.begin(115200);
+#ifdef RC52_STARTUP_DIAGNOSTICS
+  delay(2500);
+  Serial.println("RC52_DIAG stage=serial-ready");
+#endif
   board.begin();
+#ifdef RC52_STARTUP_DIAGNOSTICS
+  Serial.println("RC52_DIAG stage=board-ready");
+#endif
 
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.begin();
@@ -123,23 +213,69 @@ void setup() {
 
 #ifdef DISPLAY_CLASS
   DisplayDriver* disp = NULL;
+#ifdef RC52_STARTUP_DIAGNOSTICS
+  Serial.println("RC52_DIAG stage=display-begin");
+#endif
   if (display.begin()) {
     disp = &display;
+#ifdef RC52_STARTUP_DIAGNOSTICS
+    Serial.println("RC52_DIAG stage=display-ready");
+#endif
     disp->startFrame();
   #ifdef ST7789
     disp->setTextSize(2);
   #endif
     disp->drawTextCentered(disp->width() / 2, 28, "Loading...");
     disp->endFrame();
+  } else {
+    Serial.println("ERROR: required display initialization failed");
+  #ifdef DISPLAY_REQUIRED
+    halt();
+  #endif
   }
 #endif
 
-  if (!radio_init()) { halt(); }
+#ifdef RC52_STARTUP_DIAGNOSTICS
+  Serial.println("RC52_DIAG stage=radio-begin");
+#endif
+  if (!radio_init()) {
+    Serial.println("ERROR: radio initialization failed");
+#ifdef DISPLAY_CLASS
+    if (disp != NULL) {
+      disp->startFrame();
+      disp->setTextSize(1);
+      disp->setColor(UIColor::warning_txt);
+      disp->drawTextCentered(disp->width() / 2, disp->height() / 2 - 10, "RADIO INIT FAILED");
+      disp->setColor(UIColor::primary_txt);
+      disp->drawTextCentered(disp->width() / 2, disp->height() / 2 + 8, "Reset device");
+      disp->endFrame();
+    }
+#endif
+    halt();
+  }
+#ifdef RC52_STARTUP_DIAGNOSTICS
+  Serial.println("RC52_DIAG stage=radio-ready");
+#endif
 
   fast_rng.begin(radio_driver.getRngSeed());
 
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
-  InternalFS.begin();
+#ifdef RC52_STARTUP_DIAGNOSTICS
+  Serial.println("RC52_DIAG stage=storage-begin");
+#endif
+  const bool internal_fs_ready = InternalFS.begin();
+#ifdef NEONPOCKET_UI
+  if (!internal_fs_ready) {
+    Serial.println("ERROR: internal filesystem mount failed; refusing to format");
+  #ifdef DISPLAY_CLASS
+    showFatal(disp, "STORAGE FAILED", "Identity preserved");
+  #endif
+    halt();
+  }
+#endif
+#ifdef RC52_STARTUP_DIAGNOSTICS
+  Serial.println("RC52_DIAG stage=storage-ready");
+#endif
   #if defined(QSPIFLASH)
     if (!QSPIFlash.begin()) {
       // debug output might not be available at this point, might be too early. maybe should fall back to InternalFS here?
@@ -171,7 +307,16 @@ void setup() {
     #endif
   );
 #elif defined(ESP32)
+#ifdef NEONPOCKET_SAFE_SPIFFS_BOOTSTRAP
+  if (!beginSpiffsPreservingData()) {
+  #ifdef DISPLAY_CLASS
+    showFatal(disp, "STORAGE ERROR", "Data not erased");
+  #endif
+    halt();
+  }
+#else
   SPIFFS.begin(true);
+#endif
   store.begin();
   the_mesh.begin(
     #ifdef DISPLAY_CLASS
@@ -210,6 +355,13 @@ void setup() {
   interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface);
 #endif
 
+// add RCC6 Web/AP interface
+#ifdef RCC6_WEB_AP
+  board.setInhibitSleep(true);
+  web_interface.begin(the_mesh.getNodePrefs()->node_name, TCP_PORT);
+  interface_manager.addInterface(InterfaceType::WiFi, &web_interface);
+#endif
+
 // add usb interface
 #if defined(ENABLE_USB_INTERFACE)
   usb_serial_interface.begin(Serial);
@@ -241,7 +393,22 @@ void setup() {
   ui_task.begin(disp, &sensors, the_mesh.getNodePrefs());  // still want to pass this in as dependency, as prefs might be moved
 #endif
 
+#ifdef NEONPOCKET_MEMORY_GATE_BYTES
+  if (!probeNeonMemory()) {
+    Serial.println("ERROR: NeonPocket 16 KB memory gate failed");
+  #ifdef DISPLAY_CLASS
+    showFatal(disp, "MEMORY GATE FAILED", "Reset device");
+  #endif
+    halt();
+  }
+  Serial.println("NeonPocket: 16 KB memory gate passed");
+  next_neon_memory_probe = millis() + 60000;
+#endif
+
   board.onBootComplete();
+#ifdef RC52_STARTUP_DIAGNOSTICS
+  Serial.println("RC52_DIAG stage=boot-complete");
+#endif
 }
 
 void loop() {
@@ -254,6 +421,20 @@ void loop() {
   rtc_clock.tick();
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.loop();
+#endif
+
+#ifdef NEONPOCKET_MEMORY_GATE_BYTES
+  const unsigned long memory_now = millis();
+  if ((long)(memory_now - next_neon_memory_probe) >= 0) {
+    next_neon_memory_probe = memory_now + 60000;
+    if (!probeNeonMemory()) {
+      Serial.println("ERROR: NeonPocket runtime memory gate failed");
+  #ifdef DISPLAY_CLASS
+      showFatal(&display, "MEMORY GATE FAILED", "Activity halted");
+  #endif
+      halt();
+    }
+  }
 #endif
 
   if (!the_mesh.hasPendingWork()) {

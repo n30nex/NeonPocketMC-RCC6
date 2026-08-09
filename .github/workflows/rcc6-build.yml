@@ -1,0 +1,95 @@
+name: RCC6 Companion Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - codex/**
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  webui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/companion_radio/webui
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify checkout
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+
+      - name: Build and verify embedded WebUI
+        run: |
+          npm ci
+          npm test
+          git diff --exit-code -- .
+
+  firmware:
+    needs: webui
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment:
+          - heltec_rcc6_companion_radio_ble
+          - heltec_rcc6_companion_radio_web_ap
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify checkout
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+
+      - name: Set up build environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Build ${{ matrix.environment }}
+        run: pio run -e ${{ matrix.environment }}
+
+      - name: Verify and hash images
+        shell: bash
+        run: |
+          out=".pio/build/${{ matrix.environment }}"
+          test -s "$out/firmware.bin"
+          test -s "$out/firmware-merged.bin"
+          test -s "$out/firmware.elf"
+          test -s "$out/bootloader.bin"
+          test -s "$out/partitions.bin"
+          python -m esptool image_info "$out/firmware.bin" > "$out/image-info.txt"
+          sha256sum \
+            "$out/firmware.bin" \
+            "$out/firmware-merged.bin" \
+            "$out/firmware.elf" \
+            "$out/bootloader.bin" \
+            "$out/partitions.bin" \
+            > "$out/SHA256SUMS"
+
+      - name: Upload exact firmware candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.environment }}-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            .pio/build/${{ matrix.environment }}/firmware.bin
+            .pio/build/${{ matrix.environment }}/firmware-merged.bin
+            .pio/build/${{ matrix.environment }}/firmware.elf
+            .pio/build/${{ matrix.environment }}/bootloader.bin
+            .pio/build/${{ matrix.environment }}/partitions.bin
+            .pio/build/${{ matrix.environment }}/image-info.txt
+            .pio/build/${{ matrix.environment }}/SHA256SUMS

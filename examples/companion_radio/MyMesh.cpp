@@ -3,6 +3,11 @@
 #include <Arduino.h> // needed for PlatformIO
 #include <Mesh.h>
 
+#ifdef RCC6_WEB_AP
+#include <helpers/esp32/SerialWebInterface.h>
+extern SerialWebInterface web_interface;
+#endif
+
 #define CMD_APP_START                 1
 #define CMD_SEND_TXT_MSG              2
 #define CMD_SEND_CHANNEL_TXT_MSG      3
@@ -240,20 +245,6 @@ void MyMesh::addToOfflineQueue(const uint8_t frame[], int len) {
   }
 }
 
-int MyMesh::getFromOfflineQueue(uint8_t frame[]) {
-  if (offline_queue_len > 0) {         // check offline queue
-    size_t len = offline_queue[0].len; // take from top of queue
-    memcpy(frame, offline_queue[0].buf, len);
-
-    offline_queue_len--;
-    for (int i = 0; i < offline_queue_len; i++) { // delete top item from queue
-      offline_queue[i] = offline_queue[i + 1];
-    }
-    return len;
-  }
-  return 0; // queue is empty
-}
-
 float MyMesh::getAirtimeBudgetFactor() const {
   return _prefs.airtime_factor;
 }
@@ -284,6 +275,12 @@ uint8_t MyMesh::getExtraAckTransmitCount() const {
 }
 
 void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
+  if (_ui && len > 0) {
+    uint8_t payload_type = (raw[0] >> PH_TYPE_SHIFT) & PH_TYPE_MASK;
+    _ui->onRadioEvent(UIRadioEvent::Rx, payload_type,
+                      (int16_t)rssi, (int16_t)(snr * 4));
+  }
+
   if (_serial->isConnected() && len + 3 <= MAX_FRAME_SIZE) {
     int i = 0;
     out_frame[i++] = PUSH_CODE_LOG_RX_DATA;
@@ -293,6 +290,32 @@ void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
     i += len;
 
     _serial->writeFrame(out_frame, i);
+  }
+}
+
+void MyMesh::logTx(mesh::Packet* packet, int len) {
+  (void) len;
+#ifdef NEONPOCKET_UI
+  const bool report = packet->getPayloadType() != PAYLOAD_TYPE_ADVERT || packet == _ui_advert_packet;
+  if (packet == _ui_advert_packet) _ui_advert_packet = nullptr;
+#else
+  const bool report = true;
+#endif
+  if (_ui && report) {
+    _ui->onRadioEvent(UIRadioEvent::TxComplete, packet->getPayloadType());
+  }
+}
+
+void MyMesh::logTxFail(mesh::Packet* packet, int len) {
+  (void) len;
+#ifdef NEONPOCKET_UI
+  const bool report = packet->getPayloadType() != PAYLOAD_TYPE_ADVERT || packet == _ui_advert_packet;
+  if (packet == _ui_advert_packet) _ui_advert_packet = nullptr;
+#else
+  const bool report = true;
+#endif
+  if (_ui && report) {
+    _ui->onRadioEvent(UIRadioEvent::TxFailed, packet->getPayloadType());
   }
 }
 
@@ -359,11 +382,17 @@ void MyMesh::onDiscoveredContact(ContactInfo &contact, bool is_new, uint8_t path
       memcpy(&out_frame[1], contact.id.pub_key, PUB_KEY_SIZE);
       _serial->writeFrame(out_frame, 1 + PUB_KEY_SIZE);
     }
-  } else {
-#ifdef DISPLAY_CLASS
-    if (_ui) _ui->notify(UIEventType::newContactMessage);
-#endif
   }
+
+#ifdef DISPLAY_CLASS
+  if (is_new && _ui) {
+    if (_serial->isConnected()) {
+      _ui->onNewContactVisual();
+    } else {
+      _ui->notify(UIEventType::newContactMessage);
+    }
+  }
+#endif
 
   // add inbound-path to mem cache
   if (path && mesh::Packet::isValidPathLen(path_len)) {  // check path is valid
@@ -468,7 +497,8 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
   // we only want to show text messages on display, not cli data
   bool should_display = txt_type == TXT_TYPE_PLAIN || txt_type == TXT_TYPE_SIGNED_PLAIN;
   if (should_display && _ui) {
-    _ui->newMsg(path_len, from.name, text, offline_queue_len);
+    _ui->newMsgWithEvent(path_len, from.name, text, offline_queue_len,
+                         UIEventType::contactMessage);
     if (!_serial->isConnected()) {
       _ui->notify(UIEventType::contactMessage);
     }
@@ -585,7 +615,10 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
   if (getChannel(channel_idx, channel_details)) {
     channel_name = channel_details.name;
   }
-  if (_ui) _ui->newMsg(path_len, channel_name, text, offline_queue_len);
+  if (_ui) {
+    _ui->newMsgWithEvent(path_len, channel_name, text, offline_queue_len,
+                         UIEventType::channelMessage);
+  }
 #endif
 }
 
@@ -1124,7 +1157,7 @@ void MyMesh::handleCmdFrame(size_t len) {
                         ? ERR_CODE_NOT_FOUND
                         : ERR_CODE_UNSUPPORTED_CMD); // unknown recipient, or unsupported TXT_TYPE_*
     }
-  } else if (cmd_frame[0] == CMD_SEND_CHANNEL_TXT_MSG) { // send GroupChannel text msg
+  } else if (cmd_frame[0] == CMD_SEND_CHANNEL_TXT_MSG && len >= 7) { // send GroupChannel text msg
     int i = 1;
     uint8_t txt_type = cmd_frame[i++]; // should be TXT_TYPE_PLAIN
     uint8_t channel_idx = cmd_frame[i++];
@@ -1362,12 +1395,17 @@ void MyMesh::handleCmdFrame(size_t len) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     }
   } else if (cmd_frame[0] == CMD_SYNC_NEXT_MESSAGE) {
-    int out_len;
-    if ((out_len = getFromOfflineQueue(out_frame)) > 0) {
-      _serial->writeFrame(out_frame, out_len);
+    if (offline_queue_len > 0) {
+      const size_t out_len = offline_queue[0].len;
+      if (_serial->writeFrame(offline_queue[0].buf, out_len) == out_len) {
+        offline_queue_len--;
+        for (int i = 0; i < offline_queue_len; i++) {
+          offline_queue[i] = offline_queue[i + 1];
+        }
 #ifdef DISPLAY_CLASS
-      if (_ui) _ui->msgRead(offline_queue_len);
+        if (_ui) _ui->msgRead(offline_queue_len);
 #endif
+      }
     } else {
       out_frame[0] = RESP_CODE_NO_MORE_MESSAGES;
       _serial->writeFrame(out_frame, 1);
@@ -1909,7 +1947,14 @@ void MyMesh::handleCmdFrame(size_t len) {
     } else {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG); // invalid stats sub-type
     }
-  } else if (cmd_frame[0] == CMD_FACTORY_RESET && memcmp(&cmd_frame[1], "reset", 5) == 0) {
+  } else if (cmd_frame[0] == CMD_FACTORY_RESET && len >= 6 &&
+             memcmp(&cmd_frame[1], "reset", 5) == 0) {
+#ifdef RCC6_WEB_AP
+    if (!web_interface.clearStoredNetworkConfig()) {
+      writeErrFrame(ERR_CODE_FILE_IO_ERROR);
+      return;
+    }
+#endif
     if (_serial) {
       MESH_DEBUG_PRINTLN("Factory reset: disabling serial interface to prevent reconnects (BLE/WiFi)");
       _serial->disable(); // Phone app disconnects before we can send OK frame so it's safe here
@@ -2242,7 +2287,10 @@ void MyMesh::loop() {
 #endif
 }
 
-bool MyMesh::advert() {
+bool MyMesh::advert(bool flood) {
+#ifdef NEONPOCKET_UI
+  if (_ui_advert_packet != nullptr) return false;
+#endif
   mesh::Packet* pkt;
   if (_prefs.advert_loc_policy == ADVERT_LOC_NONE) {
     pkt = createSelfAdvert(_prefs.node_name);
@@ -2250,7 +2298,25 @@ bool MyMesh::advert() {
     pkt = createSelfAdvert(_prefs.node_name, sensors.node_lat, sensors.node_lon);
   }
   if (pkt) {
-    sendZeroHop(pkt);
+    if (flood) {
+      TransportKey default_scope;
+      memcpy(&default_scope.key, _prefs.default_scope_key, sizeof(default_scope.key));
+      sendFloodScoped(default_scope, pkt, 0);
+    } else {
+      sendZeroHop(pkt);
+    }
+#ifdef NEONPOCKET_UI
+    bool queued = false;
+    const int outbound_count = _mgr->getOutboundTotal();
+    for (int i = 0; i < outbound_count; i++) {
+      if (_mgr->getOutboundByIdx(i) == pkt) {
+        queued = true;
+        break;
+      }
+    }
+    if (!queued) return false;
+    _ui_advert_packet = pkt;
+#endif
     return true;
   } else {
     return false;

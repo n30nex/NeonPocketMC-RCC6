@@ -16,6 +16,7 @@ class SerialBLEInterface : public BaseSerialInterface, BLESecurityCallbacks, BLE
   bool oldDeviceConnected;
   bool _isEnabled;
   uint16_t last_conn_id;
+  uint16_t peer_mtu;
   uint32_t _pin_code;
   unsigned long _last_write;
   unsigned long adv_restart_time;
@@ -25,12 +26,14 @@ class SerialBLEInterface : public BaseSerialInterface, BLESecurityCallbacks, BLE
     uint8_t buf[MAX_FRAME_SIZE];
   };
 
-  #define FRAME_QUEUE_SIZE  4
+#ifndef SERIAL_BLE_FRAME_QUEUE_SIZE
+  #define SERIAL_BLE_FRAME_QUEUE_SIZE  4
+#endif
   StaticQueue_t recv_queue_state;
-  uint8_t recv_queue_storage[FRAME_QUEUE_SIZE * sizeof(Frame)];
+  uint8_t recv_queue_storage[SERIAL_BLE_FRAME_QUEUE_SIZE * sizeof(Frame)];
   QueueHandle_t recv_queue;
   int send_queue_len;
-  Frame send_queue[FRAME_QUEUE_SIZE];
+  Frame send_queue[SERIAL_BLE_FRAME_QUEUE_SIZE];
 
   void clearBuffers();
 
@@ -61,8 +64,9 @@ public:
     _isEnabled = false;
     _last_write = 0;
     last_conn_id = 0;
+    peer_mtu = 23;
     recv_queue = xQueueCreateStatic(
-      FRAME_QUEUE_SIZE, sizeof(Frame), recv_queue_storage, &recv_queue_state
+      SERIAL_BLE_FRAME_QUEUE_SIZE, sizeof(Frame), recv_queue_storage, &recv_queue_state
     );
     send_queue_len = 0;
   }
