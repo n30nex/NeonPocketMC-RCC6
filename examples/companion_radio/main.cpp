@@ -103,6 +103,9 @@ MultiSerialInterface interface_manager;
 /* GLOBAL OBJECTS */
 #ifdef DISPLAY_CLASS
   #include "UITask.h"
+#ifdef NEONPOCKET_UI
+  #include "NeonPocketSplash.h"
+#endif
   UITask ui_task(&board, &interface_manager);
 #endif
 
@@ -225,7 +228,13 @@ void setup() {
   #ifdef ST7789
     disp->setTextSize(2);
   #endif
+#ifdef NEONPOCKET_UI
+    char short_version[12];
+    NeonPocketSplash::shortVersion(short_version, sizeof(short_version), FIRMWARE_VERSION);
+    NeonPocketSplash::drawFrame(*disp, 0, short_version, FIRMWARE_BUILD_DATE);
+#else
     disp->drawTextCentered(disp->width() / 2, 28, "Loading...");
+#endif
     disp->endFrame();
   } else {
     Serial.println("ERROR: required display initialization failed");
