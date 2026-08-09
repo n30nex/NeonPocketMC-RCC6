@@ -19,8 +19,31 @@ on:
       - '.github/workflows/pr-build-check.yml'
 
 jobs:
-  build:
+  webui:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/companion_radio/webui
+
+    steps:
+      - name: Clone Repo
+        uses: actions/checkout@v6
+
+      - name: Build and verify embedded WebUI
+        run: |
+          npm ci
+          npm test
+          git diff --exit-code -- .
+
+  build:
+    needs: webui
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment:
+          - heltec_rcc6_companion_radio_ble
+          - heltec_rcc6_companion_radio_web_ap
 
     steps:
       - name: Clone Repo
@@ -30,4 +53,14 @@ jobs:
         uses: ./.github/actions/setup-build-environment
 
       - name: Build RCC6 companion firmware
-        run: pio run -e heltec_rcc6_companion_radio_ble
+        run: pio run -e ${{ matrix.environment }}
+
+      - name: Upload exact firmware candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.environment }}-${{ github.sha }}
+          path: |
+            .pio/build/${{ matrix.environment }}/firmware.bin
+            .pio/build/${{ matrix.environment }}/firmware.elf
+            .pio/build/${{ matrix.environment }}/bootloader.bin
+            .pio/build/${{ matrix.environment }}/partitions.bin

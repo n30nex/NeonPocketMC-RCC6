@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#050608">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; img-src 'self' data:; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; object-src 'none'">
+  <title>MeshCore · RCC6</title>
+  <style>/*__RCC6_CSS__*/</style>
+</head>
+<body>
+  <svg class="svg-defs" aria-hidden="true">
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5v8a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-msg" viewBox="0 0 24 24"><path d="M4 5.5h16v11H9l-5 3z"/></symbol>
+    <symbol id="i-near" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4m8.4-8.4a6 6 0 0 1 0 8.4M4.6 4.6a10.5 10.5 0 0 0 0 14.8m14.8-14.8a10.5 10.5 0 0 1 0 14.8"/></symbol>
+    <symbol id="i-radio" viewBox="0 0 24 24"><path d="M5 20V10m5 10V6m5 14V9m5 11V3"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="m3 4 18 8-18 8 3-8zM6 12h15"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5m9.5-4A8 8 0 0 0 5 9m.5 8A8 8 0 0 0 19 15"/></symbol>
+  </svg>
+
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark"><i></i></span><span>MeshCore<small>RCC6 Web</small></span></div>
+      <nav class="nav" aria-label="Primary">
+        <button class="active" data-view="home"><svg><use href="#i-home"/></svg><span>Home</span></button>
+        <button data-view="messages"><svg><use href="#i-msg"/></svg><span>Messages</span><b id="nav-unread" hidden>0</b></button>
+        <button data-view="nearby"><svg><use href="#i-near"/></svg><span>Nearby</span></button>
+        <button data-view="radio"><svg><use href="#i-radio"/></svg><span>Radio</span></button>
+        <button data-view="more"><svg><use href="#i-more"/></svg><span>More</span></button>
+      </nav>
+      <div class="sidebar-foot"><span class="status-dot" id="side-dot"></span><span id="side-status">Connecting</span></div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div><p class="eyebrow" id="screen-kicker">COMPANION</p><h1 id="screen-title">Home</h1></div>
+        <div class="top-actions">
+          <span class="battery" id="battery-chip">— V</span>
+          <button class="link-chip" id="connect-button"><span class="status-dot"></span><span id="link-label">Connecting</span></button>
+        </div>
+      </header>
+
+      <section class="screen active" data-screen="home">
+        <article class="hero card">
+          <div class="hero-copy">
+            <p class="eyebrow">YOUR MESH NODE</p>
+            <h2 id="node-name">RCC6</h2>
+            <p id="node-id">Waiting for companion link…</p>
+          </div>
+          <div class="mesh-orbit" aria-hidden="true"><i></i><i></i><i></i><span></span></div>
+          <div class="hero-stats">
+            <div><small>LINK</small><strong id="hero-link">Starting</strong></div>
+            <div><small>CONTACTS</small><strong id="hero-contacts">—</strong></div>
+            <div><small>SESSION</small><strong id="hero-uptime">—</strong></div>
+          </div>
+        </article>
+
+        <div class="dashboard-grid">
+          <article class="card feature-card accent-yellow">
+            <div class="card-head"><div><p class="eyebrow">INBOX</p><h3>Unread messages</h3></div><span class="count" id="home-unread">0</span></div>
+            <div class="preview empty" id="message-preview">No unread messages</div>
+            <button class="text-action" data-open="messages">Open messages <span>→</span></button>
+          </article>
+
+          <article class="card feature-card accent-orange">
+            <div class="card-head"><div><p class="eyebrow">MESH ACTIVITY</p><h3>Recently nearby</h3></div><span class="signal-bars"><i></i><i></i><i></i></span></div>
+            <div class="preview empty" id="nearby-preview">Waiting for adverts</div>
+            <button class="text-action" data-open="nearby">See nearby <span>→</span></button>
+          </article>
+
+          <article class="card radio-strip">
+            <div><p class="eyebrow">LIVE RADIO</p><strong id="home-rssi">— dBm</strong><span id="home-snr">SNR —</span></div>
+            <div class="radio-meter"><i id="radio-meter-fill"></i></div>
+            <div class="radio-meta"><span id="home-frequency">— MHz</span><span id="home-packets">— packets</span></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="screen" data-screen="messages">
+        <div class="messages-layout card">
+          <aside class="threads-panel">
+            <div class="section-head"><div><p class="eyebrow">CONVERSATIONS</p><h2>Messages</h2></div><span id="thread-count">0</span></div>
+            <div class="threads" id="thread-list"><p class="empty-state">Contacts and channels appear after sync.</p></div>
+          </aside>
+          <div class="conversation">
+            <div class="conversation-head">
+              <div class="avatar" id="conversation-avatar">#</div>
+              <div><strong id="conversation-title">Choose a conversation</strong><small id="conversation-subtitle">Channel or direct contact</small></div>
+            </div>
+            <div class="message-list" id="message-list"><div class="welcome-bubble">Select a channel or contact to start talking across the mesh.</div></div>
+            <form class="composer" id="composer">
+              <label class="sr-only" for="target-select">Recipient</label>
+              <select id="target-select" aria-label="Recipient"><option value="">Choose recipient</option></select>
+              <div class="compose-row">
+                <label class="sr-only" for="message-input">Message</label>
+                <textarea id="message-input" rows="1" maxlength="140" placeholder="Message the mesh…"></textarea>
+                <button type="submit" class="send-button" aria-label="Send message"><svg><use href="#i-send"/></svg></button>
+              </div>
+              <small id="compose-count">0 / 140 bytes</small>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" data-screen="nearby">
+        <div class="section-head page-head"><div><p class="eyebrow">RECENT ADVERTS</p><h2>Nearby mesh</h2></div><button class="icon-button" id="nearby-refresh" aria-label="Refresh contacts"><svg><use href="#i-refresh"/></svg></button></div>
+        <div class="nearby-grid" id="nearby-list"><article class="card empty-state">Nearby nodes appear as adverts arrive.</article></div>
+      </section>
+
+      <section class="screen" data-screen="radio">
+        <div class="radio-grid">
+          <article class="card signal-card">
+            <div class="card-head"><div><p class="eyebrow">SIGNAL HEALTH</p><h3>Live RF</h3></div><span class="live-pill">LIVE</span></div>
+            <div class="signal-readout"><strong id="radio-rssi">—</strong><span>dBm</span><small id="radio-quality">Waiting for sample</small></div>
+            <canvas id="signal-chart" height="124" aria-label="Recent RSSI signal chart"></canvas>
+            <div class="chart-legend"><span><i class="green"></i>RSSI</span><span id="radio-snr">SNR —</span><span id="radio-noise">Noise —</span></div>
+          </article>
+          <div class="metric-grid">
+            <article class="card metric"><small>FREQUENCY</small><strong id="radio-frequency">—</strong><span>MHz</span></article>
+            <article class="card metric"><small>BANDWIDTH</small><strong id="radio-bandwidth">—</strong><span>kHz</span></article>
+            <article class="card metric"><small>SPREADING</small><strong id="radio-spreading">—</strong><span id="radio-coding">CR —</span></article>
+            <article class="card metric"><small>TX POWER</small><strong id="radio-power">—</strong><span>dBm</span></article>
+          </div>
+          <article class="card packet-card">
+            <div class="card-head"><div><p class="eyebrow">PACKETS</p><h3>On-air counters</h3></div><span id="packet-errors" class="quiet">0 errors</span></div>
+            <div class="packet-stats"><div><strong id="packet-received">—</strong><small>Received</small></div><div><strong id="packet-sent">—</strong><small>Sent</small></div><div><strong id="packet-direct">—</strong><small>Direct RX</small></div><div><strong id="packet-flood">—</strong><small>Flood RX</small></div></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="screen" data-screen="more">
+        <div class="more-grid">
+          <article class="card device-card">
+            <p class="eyebrow">DEVICE</p><div class="device-icon"><span class="brand-mark"><i></i></span></div>
+            <h2 id="more-name">RCC6</h2><p id="more-model">MeshCore Companion</p>
+            <dl><div><dt>Firmware</dt><dd id="more-firmware">—</dd></div><div><dt>Build</dt><dd id="more-build">—</dd></div><div><dt>Public key</dt><dd id="more-key">—</dd></div></dl>
+          </article>
+          <div class="settings-stack">
+            <article class="card action-card"><div><p class="eyebrow">PRESENCE</p><h3>Advertise this node</h3><p>Queue a flood advert so nearby MeshCore nodes can discover you.</p></div><button class="primary-button" id="advert-button">Advert now</button></article>
+            <article class="card action-card"><div><p class="eyebrow">CONNECTION</p><h3>RCC6 SoftAP</h3><p id="ap-address">Connected through this device at 192.168.4.1</p></div><button class="secondary-button" id="refresh-button">Sync now</button></article>
+            <article class="card about-card"><div><p class="eyebrow">ABOUT</p><h3>MeshCore Web</h3><p>Offline companion UI · v<span id="app-version">—</span><br>Powered by MeshCore.js <span id="library-version">—</span> · MIT © Liam Cottle</p></div></article>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast-stack" id="toasts" aria-live="polite"></div>
+  <div class="boot" id="boot"><span class="brand-mark large"><i></i></span><strong>MeshCore</strong><small>Connecting to RCC6…</small><div class="boot-line"><i></i></div></div>
+  <script>/*__RCC6_JS__*/</script>
+</body>
+</html>

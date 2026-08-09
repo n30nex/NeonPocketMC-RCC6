@@ -35,7 +35,13 @@ static uint32_t _atoi(const char* sp) {
 #endif
 
 #ifdef ESP32
-  #ifdef WIFI_SSID
+  #ifdef RCC6_WEB_AP
+    #include <helpers/esp32/SerialWebInterface.h>
+    SerialWebInterface serial_interface;
+    #ifndef TCP_PORT
+      #define TCP_PORT 5000
+    #endif
+  #elif defined(WIFI_SSID)
     #include <helpers/esp32/SerialWifiInterface.h>
     SerialWifiInterface serial_interface;
     #ifndef TCP_PORT
@@ -234,7 +240,10 @@ void setup() {
     #endif
   );
 
-#ifdef WIFI_SSID
+#ifdef RCC6_WEB_AP
+  board.setInhibitSleep(true);   // prevent sleep while the access point is active
+  serial_interface.begin(the_mesh.getNodePrefs()->node_name, TCP_PORT);
+#elif defined(WIFI_SSID)
   board.setInhibitSleep(true);   // prevent sleep when WiFi is active
   WiFi.setAutoReconnect(true);
 

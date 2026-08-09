@@ -2,6 +2,10 @@
 #include <helpers/TxtDataHelpers.h>
 #include "../MyMesh.h"
 #include "target.h"
+#ifdef RCC6_WEB_AP
+  #include <helpers/esp32/SerialWebInterface.h>
+  extern SerialWebInterface serial_interface;
+#endif
 #ifdef WIFI_SSID
   #include <WiFi.h>
 #endif
@@ -239,7 +243,12 @@ class HomeScreen : public UIScreen {
       case HomePage::FIRST: return "HOME";
       case HomePage::RECENT: return "NEARBY";
       case HomePage::RADIO: return "RADIO";
-      case HomePage::BLUETOOTH: return "BLUETOOTH";
+      case HomePage::BLUETOOTH:
+#ifdef RCC6_WEB_AP
+        return "WIFI AP";
+#else
+        return "BLUETOOTH";
+#endif
       case HomePage::ADVERT: return "ADVERTISE";
 #if ENV_INCLUDE_GPS == 1
       case HomePage::GPS: return "GPS";
@@ -269,15 +278,19 @@ class HomeScreen : public UIScreen {
     display.translateUTF8ToBlocks(filtered_name, _node_prefs->node_name, sizeof(filtered_name));
     display.drawTextEllipsized(4, 1, 130, filtered_name);
 
-    DisplayDriver::Color ble_color = DisplayDriver::RED;
+    DisplayDriver::Color link_color = DisplayDriver::RED;
     if (_task->isSerialEnabled()) {
-      ble_color = _task->hasConnection() ? DisplayDriver::GREEN : DisplayDriver::ORANGE;
+      link_color = _task->hasConnection() ? DisplayDriver::GREEN : DisplayDriver::ORANGE;
     }
-    display.setColor(ble_color);
+    display.setColor(link_color);
     display.fillRect(140, 5, 6, 6);
     display.setColor(DisplayDriver::LIGHT);
     display.setCursor(151, 1);
+#ifdef RCC6_WEB_AP
+    display.print("WIFI");
+#else
     display.print("BLE");
+#endif
     renderBatteryIndicator(display, _task->getCachedBattMilliVolts());
 
     display.setColor(DisplayDriver::BLUE);
@@ -472,6 +485,27 @@ class HomeScreen : public UIScreen {
           (unsigned long)radio_driver.getPacketsRecvErrors(), radio_driver.getNoiseFloor());
       display.drawTextEllipsized(4, 99, display.width() - 8, tmp);
     } else if (_page == HomePage::BLUETOOTH) {
+#ifdef RCC6_WEB_AP
+      const bool enabled = _task->isSerialEnabled();
+      display.setTextSize(1);
+      display.setColor(enabled ? DisplayDriver::GREEN : DisplayDriver::RED);
+      display.setCursor(8, 40);
+      display.print(enabled ? "WEB AP ON" : "WEB AP OFF");
+      display.setColor(_task->hasConnection() ? DisplayDriver::GREEN : DisplayDriver::ORANGE);
+      display.drawTextRightAlign(display.width() - 8, 40,
+          _task->hasConnection() ? "CLIENT READY" : "WAITING");
+
+      display.setColor(DisplayDriver::BLUE);
+      display.drawRect(4, 54, display.width() - 8, 55);
+      display.setColor(DisplayDriver::LIGHT);
+      snprintf(tmp, sizeof(tmp), "SSID %s", serial_interface.getApSsid());
+      display.drawTextEllipsized(8, 59, display.width() - 16, tmp);
+      snprintf(tmp, sizeof(tmp), "PASS %s", serial_interface.getApPassword());
+      display.drawTextEllipsized(8, 75, display.width() - 16, tmp);
+      const IPAddress ap_ip = serial_interface.getApIP();
+      snprintf(tmp, sizeof(tmp), "OPEN %u.%u.%u.%u", ap_ip[0], ap_ip[1], ap_ip[2], ap_ip[3]);
+      display.drawTextEllipsized(8, 91, display.width() - 16, tmp);
+#else
       const bool enabled = _task->isSerialEnabled();
       display.setColor(enabled ? DisplayDriver::GREEN : DisplayDriver::RED);
       display.drawXbm(24, 50, enabled ? bluetooth_on : bluetooth_off, 32, 32);
@@ -490,6 +524,7 @@ class HomeScreen : public UIScreen {
         display.drawTextCentered(146, 86,
             _task->hasConnection() ? "Companion ready" : "Radio only");
       }
+#endif
     } else if (_page == HomePage::ADVERT) {
       display.setColor(DisplayDriver::GREEN);
       display.drawXbm(24, 50, advert_icon, 32, 32);
@@ -844,14 +879,19 @@ public:
     }
 #endif
     if (c == KEY_ENTER && _page == HomePage::BLUETOOTH) {
-      if (_task->isSerialEnabled()) {  // toggle Bluetooth on/off
+      if (_task->isSerialEnabled()) {
         _task->disableSerial();
       } else {
         _task->enableSerial();
       }
 #ifdef HELTEC_RCC6_NEON_UI
+#ifdef RCC6_WEB_AP
+      _task->showAlert(_task->isSerialEnabled() ? "WiFi AP on" : "WiFi AP off", 800,
+          _task->isSerialEnabled() ? DisplayDriver::GREEN : DisplayDriver::ORANGE);
+#else
       _task->showAlert(_task->isSerialEnabled() ? "Bluetooth on" : "Bluetooth off", 800,
           _task->isSerialEnabled() ? DisplayDriver::GREEN : DisplayDriver::ORANGE);
+#endif
 #endif
       return true;
     }
@@ -1531,7 +1571,11 @@ void UITask::loop() {
     _last_connection = connected;
   } else if (connected != _last_connection) {
     _last_connection = connected;
+#ifdef RCC6_WEB_AP
+    showAlert(connected ? "Network client" : "Client disconnected", 900,
+#else
     showAlert(connected ? "Phone connected" : "Phone disconnected", 900,
+#endif
         connected ? DisplayDriver::GREEN : DisplayDriver::RED);
   }
 #endif
