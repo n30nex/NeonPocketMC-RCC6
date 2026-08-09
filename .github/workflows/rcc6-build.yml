@@ -29,6 +29,9 @@ jobs:
         shell: bash
         run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
 
+      - name: Verify demo-scene splash contract
+        run: python ../ui-new/verify_demoscene_splash.py
+
       - name: Build and verify embedded WebUI
         run: |
           npm ci
