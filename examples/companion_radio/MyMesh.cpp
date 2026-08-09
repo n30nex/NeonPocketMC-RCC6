@@ -290,14 +290,26 @@ void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
 
 void MyMesh::logTx(mesh::Packet* packet, int len) {
   (void) len;
-  if (_ui) {
+#ifdef HELTEC_RCC6_NEON_UI
+  const bool report = packet->getPayloadType() != PAYLOAD_TYPE_ADVERT || packet == _ui_advert_packet;
+  if (packet == _ui_advert_packet) _ui_advert_packet = nullptr;
+#else
+  const bool report = true;
+#endif
+  if (_ui && report) {
     _ui->onRadioEvent(UIRadioEvent::TxComplete, packet->getPayloadType());
   }
 }
 
 void MyMesh::logTxFail(mesh::Packet* packet, int len) {
   (void) len;
-  if (_ui) {
+#ifdef HELTEC_RCC6_NEON_UI
+  const bool report = packet->getPayloadType() != PAYLOAD_TYPE_ADVERT || packet == _ui_advert_packet;
+  if (packet == _ui_advert_packet) _ui_advert_packet = nullptr;
+#else
+  const bool report = true;
+#endif
+  if (_ui && report) {
     _ui->onRadioEvent(UIRadioEvent::TxFailed, packet->getPayloadType());
   }
 }
@@ -2262,6 +2274,9 @@ void MyMesh::loop() {
 }
 
 bool MyMesh::advert(bool flood) {
+#ifdef HELTEC_RCC6_NEON_UI
+  if (_ui_advert_packet != nullptr) return false;
+#endif
   mesh::Packet* pkt;
   if (_prefs.advert_loc_policy == ADVERT_LOC_NONE) {
     pkt = createSelfAdvert(_prefs.node_name);
@@ -2276,6 +2291,18 @@ bool MyMesh::advert(bool flood) {
     } else {
       sendZeroHop(pkt);
     }
+#ifdef HELTEC_RCC6_NEON_UI
+    bool queued = false;
+    const int outbound_count = _mgr->getOutboundTotal();
+    for (int i = 0; i < outbound_count; i++) {
+      if (_mgr->getOutboundByIdx(i) == pkt) {
+        queued = true;
+        break;
+      }
+    }
+    if (!queued) return false;
+    _ui_advert_packet = pkt;
+#endif
     return true;
   } else {
     return false;

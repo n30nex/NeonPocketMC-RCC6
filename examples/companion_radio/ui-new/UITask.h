@@ -63,6 +63,7 @@ class UITask : public AbstractUITask {
   bool _battery_low_warning = false;
   unsigned long _manual_advert_until = 0;
   DisplayDriver::Color _next_message_color = DisplayDriver::YELLOW;
+  bool _unread_overflow = false;
 
   void startNeonPulse(DisplayDriver::Color color, unsigned long duration_millis = 300);
   bool handleNeonInput(char c);
@@ -114,7 +115,9 @@ public:
   const char* getLatestSender() const { return _latest_sender; }
   const char* getLatestPreview() const { return _latest_preview; }
   bool hasLatestPreview() const { return _latest_preview[0] != 0; }
-  void setLocalUnread(int count, const char* sender = nullptr, const char* preview = nullptr);
+  bool hasUnreadOverflow() const { return _unread_overflow; }
+  void setLocalUnread(int count, const char* sender = nullptr, const char* preview = nullptr,
+      bool overflow = false);
   bool isPowerConfirmArmed() const;
   uint16_t getCachedBattMilliVolts() const { return _cached_batt_millivolts; }
   bool hasCachedRadioSample() const { return _radio_sample_known; }

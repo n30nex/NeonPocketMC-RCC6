@@ -28,6 +28,8 @@
 #ifndef UI_RECENT_LIST_SIZE
   #define UI_RECENT_LIST_SIZE 4
 #endif
+// ponytail: fixed RAM ring; at capacity the UI reports an honest lower bound.
+static constexpr int UI_MAX_UNREAD_MSGS = 32;
 
 #if UI_HAS_JOYSTICK
   #define PRESS_LABEL "press Enter"
@@ -351,7 +353,8 @@ class HomeScreen : public UIScreen {
       display.setColor(DisplayDriver::BLUE);
       display.drawRect(4, 38, display.width() - 8, 40);
       display.setTextSize(1);
-      snprintf(tmp, sizeof(tmp), "%d UNREAD", _task->getMsgCount());
+      snprintf(tmp, sizeof(tmp), "%d%s UNREAD", _task->getMsgCount(),
+          _task->hasUnreadOverflow() ? "+" : "");
       display.setColor(_task->getMsgCount() ? DisplayDriver::YELLOW : DisplayDriver::GREEN);
       display.setCursor(8, 42);
       display.print(tmp);
@@ -868,7 +871,9 @@ public:
 #endif
       } else {
 #ifdef HELTEC_RCC6_NEON_UI
-        _task->showAlert("Advert failed", 1000, DisplayDriver::RED);
+        const bool busy = the_mesh.isAdvertPending();
+        _task->showAlert(busy ? "Advert already queued" : "Advert failed", 1000,
+            busy ? DisplayDriver::ORANGE : DisplayDriver::RED);
 #else
         _task->showAlert("Advert failed..", 1000);
 #endif
@@ -909,12 +914,66 @@ class MsgPreviewScreen : public UIScreen {
     uint32_t timestamp;
     uint8_t path_len;
     char source[32];
+#ifdef HELTEC_RCC6_NEON_UI
+    char msg[MAX_FRAME_SIZE];
+#else
     char msg[78];
+#endif
   };
-  #define MAX_UNREAD_MSGS   32
   int num_unread;
-  int head = MAX_UNREAD_MSGS - 1; // index of latest unread message
-  MsgEntry unread[MAX_UNREAD_MSGS];
+  int head = UI_MAX_UNREAD_MSGS - 1; // index of latest unread message
+  MsgEntry unread[UI_MAX_UNREAD_MSGS];
+#ifdef HELTEC_RCC6_NEON_UI
+  bool overflowed = false;
+  int page_head = -1;
+  size_t page_offset = 0;
+  size_t next_page_offset = 0;
+  bool page_has_more = false;
+
+  size_t renderMessagePage(DisplayDriver& display, const char* text, size_t offset) {
+    static constexpr size_t chars_per_line = 33;
+    static constexpr int lines_per_page = 7;
+    const size_t text_len = strlen(text);
+    size_t pos = offset > text_len ? 0 : offset;
+
+    for (int line_num = 0; line_num < lines_per_page && pos < text_len; line_num++) {
+      while (pos < text_len && (text[pos] == ' ' || text[pos] == '\t' || text[pos] == '\r')) pos++;
+      if (pos >= text_len) break;
+      if (text[pos] == '\n') {
+        pos++;
+        continue;
+      }
+
+      const size_t line_start = pos;
+      size_t line_end = line_start;
+      while (line_end < text_len && line_end - line_start < chars_per_line &&
+          text[line_end] != '\n' && text[line_end] != '\r') line_end++;
+
+      size_t next = line_end;
+      if (line_end < text_len && text[line_end] != '\n' && text[line_end] != '\r') {
+        size_t split = line_end;
+        while (split > line_start && text[split - 1] != ' ' && text[split - 1] != '\t') split--;
+        if (split > line_start) {
+          line_end = split - 1;
+          while (line_end > line_start &&
+              (text[line_end - 1] == ' ' || text[line_end - 1] == '\t')) line_end--;
+          next = split;
+        }
+      } else if (line_end < text_len) {
+        next = line_end + 1;
+      }
+
+      char line[chars_per_line + 1];
+      const size_t line_len = line_end - line_start;
+      memcpy(line, text + line_start, line_len);
+      line[line_len] = 0;
+      display.setCursor(10, 49 + line_num * 8);
+      display.print(line);
+      pos = next;
+    }
+    return pos;
+  }
+#endif
 
   void formatOrigin(char* dest, size_t dest_size, const MsgEntry& entry) const {
     if (entry.path_len == 0xFF) {
@@ -928,8 +987,14 @@ public:
   MsgPreviewScreen(UITask* task, mesh::RTCClock* rtc) : _task(task), _rtc(rtc) { num_unread = 0; }
 
   int addPreview(uint8_t path_len, const char* from_name, const char* msg) {
-    head = (head + 1) % MAX_UNREAD_MSGS;
-    if (num_unread < MAX_UNREAD_MSGS) num_unread++;
+    head = (head + 1) % UI_MAX_UNREAD_MSGS;
+    if (num_unread < UI_MAX_UNREAD_MSGS) {
+      num_unread++;
+#ifdef HELTEC_RCC6_NEON_UI
+    } else {
+      overflowed = true;
+#endif
+    }
 
     auto p = &unread[head];
     p->timestamp = _rtc->getCurrentTime();
@@ -938,6 +1003,10 @@ public:
     StrHelper::strncpy(p->msg, msg, sizeof(p->msg));
     return num_unread;
   }
+
+#ifdef HELTEC_RCC6_NEON_UI
+  bool hasOverflowed() const { return overflowed; }
+#endif
 
   int render(DisplayDriver& display) override {
 #ifdef HELTEC_RCC6_NEON_UI
@@ -959,7 +1028,7 @@ public:
     display.print("INBOX");
     display.setColor(DisplayDriver::YELLOW);
     char count[20];
-    snprintf(count, sizeof(count), "%d unread", num_unread);
+    snprintf(count, sizeof(count), "%d%s unread", num_unread, overflowed ? "+" : "");
     display.drawTextCentered(display.width() / 2, 1, count);
     display.setColor(DisplayDriver::LIGHT);
     display.drawTextRightAlign(display.width() - 4, 1, tmp);
@@ -979,11 +1048,16 @@ public:
     display.setColor(DisplayDriver::LIGHT);
     char filtered_msg[sizeof(p->msg)];
     display.translateUTF8ToBlocks(filtered_msg, p->msg, sizeof(filtered_msg));
-    display.printWordWrap(filtered_msg, display.width() - 20);
+    if (page_head != head) {
+      page_head = head;
+      page_offset = 0;
+    }
+    next_page_offset = renderMessagePage(display, filtered_msg, page_offset);
+    page_has_more = filtered_msg[next_page_offset] != 0;
 
     display.setColor(DisplayDriver::BLUE);
     display.setCursor(4, 113);
-    display.print("CLICK NEXT");
+    display.print(page_has_more ? "CLICK MORE" : "CLICK NEXT");
     display.drawTextRightAlign(display.width() - 4, 113, "2X CLEAR ALL");
     return 1000;
 #else
@@ -1033,13 +1107,23 @@ public:
 
   bool handleInput(char c) override {
     if (c == KEY_NEXT || c == KEY_RIGHT) {
-      head = (head + MAX_UNREAD_MSGS - 1) % MAX_UNREAD_MSGS;
+#ifdef HELTEC_RCC6_NEON_UI
+      if (page_has_more) {
+        page_offset = next_page_offset;
+        return true;
+      }
+      page_offset = next_page_offset = 0;
+      page_head = -1;
+      page_has_more = false;
+#endif
+      head = (head + UI_MAX_UNREAD_MSGS - 1) % UI_MAX_UNREAD_MSGS;
       num_unread--;
 #ifdef HELTEC_RCC6_NEON_UI
       if (num_unread > 0) {
         const auto p = &unread[head];
-        _task->setLocalUnread(num_unread, p->source, p->msg);
+        _task->setLocalUnread(num_unread, p->source, p->msg, overflowed);
       } else {
+        overflowed = false;
         _task->setLocalUnread(0);
       }
 #endif
@@ -1051,6 +1135,10 @@ public:
     if (c == KEY_ENTER) {
       num_unread = 0;  // clear unread queue
 #ifdef HELTEC_RCC6_NEON_UI
+      overflowed = false;
+      page_offset = next_page_offset = 0;
+      page_head = -1;
+      page_has_more = false;
       _task->setLocalUnread(0);
 #endif
       _task->gotoHomeScreen();
@@ -1256,8 +1344,9 @@ void UITask::msgRead(int msgcount) {
 }
 
 #ifdef HELTEC_RCC6_NEON_UI
-void UITask::setLocalUnread(int count, const char* sender, const char* preview) {
+void UITask::setLocalUnread(int count, const char* sender, const char* preview, bool overflow) {
   _msgcount = count;
+  _unread_overflow = overflow;
   if (count == 0) {
     _latest_sender[0] = 0;
     _latest_preview[0] = 0;
@@ -1298,6 +1387,7 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
   const int local_unread = ((MsgPreviewScreen *) msg_preview)->addPreview(path_len, from_name, text);
 #ifdef HELTEC_RCC6_NEON_UI
   _msgcount = local_unread;
+  _unread_overflow = ((MsgPreviewScreen *) msg_preview)->hasOverflowed();
 #endif
   setCurrScreen(msg_preview);
 
@@ -1378,6 +1468,10 @@ void UITask::loop() {
   char c = 0;
 #ifdef HELTEC_RCC6_NEON_UI
   const unsigned long event_now = millis();
+  if (_power_confirm_until != 0 && (int32_t)(event_now - _power_confirm_until) >= 0) {
+    _power_confirm_until = 0;
+    _next_refresh = 0;
+  }
   if (_wake_pending && _display != NULL) {
     _wake_pending = false;
     if (!_display->isOn()) _display->turnOn();

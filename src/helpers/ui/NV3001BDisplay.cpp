@@ -527,11 +527,15 @@ void NV3001BDisplay::fillPhysicalRect(int x, int y, int w, int h) {
 }
 
 void NV3001BDisplay::drawChar(int x, int y, char ch) {
-  if (ch < 32 || ch > 127) ch = '?';
-
-  uint16_t index = (uint16_t)(ch - 32) * 5;
   int scale_x = textPixelScaleX(text_size);
   int scale_y = textPixelScaleY(text_size);
+  if ((uint8_t)ch == 0xDB) {
+    fillPhysicalRect(x, y, 5 * scale_x, 7 * scale_y);
+    return;
+  }
+  if ((uint8_t)ch < 32 || (uint8_t)ch > 127) ch = '?';
+
+  uint16_t index = (uint16_t)(ch - 32) * 5;
   for (int col = 0; col < 5; col++) {
     uint8_t line = pgm_read_byte(font5x7 + index + col);
     for (int row = 0; row < 7; row++) {

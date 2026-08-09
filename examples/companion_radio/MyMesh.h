@@ -98,6 +98,9 @@ public:
   void loop();
   void handleCmdFrame(size_t len);
   bool advert(bool flood = false);
+#ifdef HELTEC_RCC6_NEON_UI
+  bool isAdvertPending() const { return _ui_advert_packet != nullptr; }
+#endif
   void enterCLIRescue();
 
   int  getRecentlyHeard(AdvertPath dest[], int max_num);
@@ -213,6 +216,9 @@ private:
   uint32_t pending_req;   // pending _BINARY_REQ
   BaseSerialInterface *_serial;
   AbstractUITask* _ui;
+#ifdef HELTEC_RCC6_NEON_UI
+  mesh::Packet* _ui_advert_packet = nullptr;
+#endif
 
   ContactsIterator _iter;
   uint32_t _iter_filter_since;
