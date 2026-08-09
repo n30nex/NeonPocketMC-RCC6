@@ -82,6 +82,18 @@ class UITask : public AbstractUITask {
   unsigned long _manual_advert_until = 0;
   ColorVal _next_message_color = NEON_YELLOW;
   bool _unread_overflow = false;
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+  unsigned long _next_diag_sample = 0;
+  uint32_t _cached_uptime_seconds = 0;
+  uint32_t _cached_rx_packets = 0;
+  uint32_t _cached_tx_packets = 0;
+  uint32_t _cached_rx_errors = 0;
+  uint32_t _cached_heap_free = 0;
+  uint32_t _cached_heap_max = 0;
+  int16_t _cached_noise_floor = 0;
+
+  void sampleDiagnostics();
+#endif
 
   void startNeonPulse(ColorVal color, unsigned long duration_millis = 300);
   bool handleNeonInput(char c);
@@ -142,6 +154,16 @@ public:
   int16_t getCachedRadioRSSI() const { return _radio_rssi_dbm; }
   int16_t getCachedRadioSNRQuarter() const { return _radio_snr_quarter_db; }
   void armManualAdvert() { _manual_advert_until = millis() + 60000; }
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+  uint32_t getCachedUptimeSeconds() const { return _cached_uptime_seconds; }
+  uint32_t getCachedRxPackets() const { return _cached_rx_packets; }
+  uint32_t getCachedTxPackets() const { return _cached_tx_packets; }
+  uint32_t getCachedRxErrors() const { return _cached_rx_errors; }
+  uint32_t getCachedHeapFree() const { return _cached_heap_free; }
+  uint32_t getCachedHeapMax() const { return _cached_heap_max; }
+  int16_t getCachedNoiseFloor() const { return _cached_noise_floor; }
+  void requestRefresh() { _next_refresh = 0; }
+#endif
 #endif
   bool hasDisplay() const { return _display != NULL; }
   bool isButtonPressed() const;

@@ -101,6 +101,9 @@ public:
 #ifdef NEONPOCKET_UI
   bool isAdvertPending() const { return _ui_advert_packet != nullptr; }
 #endif
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+  bool sendQuickReplyToLatest(const char* text);
+#endif
   void enterCLIRescue();
 
   int  getRecentlyHeard(AdvertPath dest[], int max_num);
@@ -222,6 +225,12 @@ private:
   AbstractUITask* _ui;
 #ifdef NEONPOCKET_UI
   mesh::Packet* _ui_advert_packet = nullptr;
+#endif
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+  enum class UIReplyTarget : uint8_t { None, Direct, Channel };
+  UIReplyTarget _ui_reply_target = UIReplyTarget::None;
+  uint8_t _ui_reply_pubkey_prefix[6] = {};
+  uint8_t _ui_reply_channel = 0;
 #endif
 
   ContactsIterator _iter;

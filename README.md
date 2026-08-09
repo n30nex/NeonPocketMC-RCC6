@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/n30nex/NeonPocketMC/main/branding/neonpocketmc-mark.png" alt="NeonPocketMC pocket mesh logo" width="140">
+</p>
+
 # NeonPocketMC-RCC6
 
 Experimental MeshCore 1.17 companion firmware for the **Heltec RadioCore RCC6** with its attached **220×128 NV3001B TFT**.
@@ -18,7 +22,7 @@ The repository builds two separate application images:
 | `heltec_rcc6_companion_radio_ble` | Secure BLE companion for the MeshCore phone app |
 | `heltec_rcc6_companion_radio_web_ap` | Offline phone/desktop WebUI, setup AP, local 2.4 GHz Wi-Fi, and trusted-LAN TCP/5000 |
 
-Both images include the native NeonPocket display, local direct and `#channel` unread inbox, Nearby and Radio views, flood-scoped Advert action, 60-second screen timeout, battery warning, and one-button controls.
+Both images include the native NeonPocket display, animated branded startup, local direct and `#channel` unread inbox, Nearby and Radio views, flood-scoped Advert action, 60-second screen timeout, battery warning, and one-button controls. RCC6 builds also add a cached Diagnostics page and a six-choice auto-scanning Quick Reply page that replies to the latest direct sender or channel without blocking radio callbacks.
 
 This port is based on MeshCore **1.17.0** at exact upstream commit [`727fc0512ce08bfd7b499e46daa7fca6eeec730d`](https://github.com/meshcore-dev/MeshCore/commit/727fc0512ce08bfd7b499e46daa7fca6eeec730d).
 
@@ -43,6 +47,8 @@ Firmware updates therefore preserve the MeshCore identity, contacts, channels, a
 | Second hold within eight seconds | Power off after button release |
 
 Wait at least eight seconds after boot before using Hold; the early-boot hold remains MeshCore's CLI rescue gesture.
+
+On **Quick Reply**, wait for the desired phrase, double-press to select it, then double-press again to send. The page fails closed when no valid recent message target exists. Diagnostics samples uptime, battery, packet counters, radio errors, noise floor, and heap every five seconds rather than touching the radio during display rendering.
 
 ## Web/AP mode
 
