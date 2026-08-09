@@ -59,7 +59,7 @@ jobs:
         uses: ./.github/actions/setup-build-environment
 
       - name: Build ${{ matrix.environment }}
-        run: pio run -e ${{ matrix.environment }}
+        run: pio run -e ${{ matrix.environment }} -t mergebin
 
       - name: Verify and hash images
         shell: bash
