@@ -448,12 +448,12 @@ function ingestWaiting(item) {
   if (item.contactMessage) {
     const message = item.contactMessage;
     const key = targetForContactPrefix(message.pubKeyPrefix);
-    return addMessage({ id: messageId("dm", hex(message.pubKeyPrefix), message.senderTimestamp, message.text), key, text: message.text, timestamp: message.senderTimestamp, direction: "in", status: "received", unread: state.view !== "messages" || state.selected !== key, snr: message.snr }) ? 1 : 0;
+    return addMessage({ id: messageId("dm", hex(message.pubKeyPrefix), message.senderTimestamp, message.text), key, text: message.text, timestamp: message.senderTimestamp, direction: "in", status: "received", unread: document.hidden || state.view !== "messages" || state.selected !== key, snr: message.snr }) ? 1 : 0;
   }
   if (item.channelMessage) {
     const message = item.channelMessage;
     const key = `ch:${message.channelIdx}`;
-    return addMessage({ id: messageId("channel", key, message.senderTimestamp, message.text), key, text: message.text, timestamp: message.senderTimestamp, direction: "in", status: "received", unread: state.view !== "messages" || state.selected !== key, snr: message.snr }) ? 1 : 0;
+    return addMessage({ id: messageId("channel", key, message.senderTimestamp, message.text), key, text: message.text, timestamp: message.senderTimestamp, direction: "in", status: "received", unread: document.hidden || state.view !== "messages" || state.selected !== key, snr: message.snr }) ? 1 : 0;
   }
   return 0;
 }

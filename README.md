@@ -1,6 +1,6 @@
 # RadioCore²-RCC6
 
-MeshCore Companion Bluetooth firmware for the **Heltec RadioCore RCC6** with its native **220×128 NV3001B TFT**.
+MeshCore Companion firmware for the **Heltec RadioCore RCC6** with its native **220×128 NV3001B TFT**. Two firmware modes are provided: secure BLE companion mode, and Wi-Fi Web/AP mode with an offline WebUI plus raw TCP/5000 access for trusted private networks.
 
 [![Release](https://img.shields.io/github/v/release/n30nex/RadioCore2-RCC6?include_prereleases&label=firmware)](https://github.com/n30nex/RadioCore2-RCC6/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](license.txt)
@@ -33,10 +33,13 @@ MeshCore Companion Bluetooth firmware for the **Heltec RadioCore RCC6** with its
 - BLE, battery, RF, unread, RX/TX, RSSI, and SNR status at a glance.
 - Recent nodes, radio settings, Bluetooth, Advert, Power, and message views.
 - Color-coded visual notifications for messages, nearby nodes, BLE state, adverts, and low battery.
-- One-button Quick Menu and screen-off/wake behavior.
+- One-button press/double-press/hold controls and screen-off/wake behavior.
 - Subtle page transitions and notification motion.
 - RGB565 framebuffer with 8-row delta flushing; measured RC1 delta frame: **121 ms** versus **342–360 ms** for a full frame.
 - Static BLE frame queues sized for companion synchronization bursts.
+- Responsive iPhone-dark WebUI for phones and desktops, served directly by the RCC6.
+- 2.4 GHz setup AP, local Wi-Fi setup wizard, DHCP address on the TFT, and automatic setup-AP fallback.
+- One exclusive WebUI or raw TCP/5000 companion session at a time.
 - DIO flash mode for RCC6 compatibility.
 
 ## Controls
@@ -44,10 +47,10 @@ MeshCore Companion Bluetooth firmware for the **Heltec RadioCore RCC6** with its
 | Action | Result |
 |---|---|
 | Press while screen is off | Wake the display; the press is consumed |
-| Press while screen is on | Next page or next menu item |
-| Hold | Open Quick Menu |
-| Press in Quick Menu | Move the highlight |
-| Hold in Quick Menu | Select the highlighted action |
+| Press while screen is on | Next page or next message page |
+| Double-press | Run the action shown on the current page |
+| Hold | Open the Power confirmation page |
+| Hold again within eight seconds | Power off after the button is released |
 
 Wait at least eight seconds after boot before using Hold; the early-boot hold remains MeshCore's CLI rescue gesture.
 
@@ -56,7 +59,8 @@ Wait at least eight seconds after boot before using Hold; the early-boot hold re
 - Heltec **RadioCore RCC6** / ESP32-C6
 - RCC6 LoRa module configuration used by the upstream `heltec_rcc6` target
 - Attached Heltec NV3001B **220×128 TFT**
-- BLE companion mode
+- BLE companion firmware mode
+- Wi-Fi Web/AP companion firmware mode with HTTP/80 and TCP/5000
 
 > [!CAUTION]
 > This build targets **RCC6 only**. Do not flash it onto RadioCore RC32, RC52, or unrelated ESP32 boards.
@@ -75,13 +79,17 @@ This repository is based on MeshCore `v1.16.0` development source at upstream co
 git clone https://github.com/n30nex/RadioCore2-RCC6.git
 cd RadioCore2-RCC6
 pio run -e heltec_rcc6_companion_radio_ble
+pio run -e heltec_rcc6_companion_radio_web_ap
 ```
 
 The application binary is produced under:
 
 ```text
 .pio/build/heltec_rcc6_companion_radio_ble/firmware.bin
+.pio/build/heltec_rcc6_companion_radio_web_ap/firmware.bin
 ```
+
+The Web/AP image starts a WPA-protected setup network and serves its WebUI at `http://192.168.4.1`. After the Home-page setup wizard joins a local 2.4 GHz network, the TFT shows the DHCP address. Station-mode HTTP uses username `meshcore` and the eight-letter device key shown on the TFT. Raw TCP/5000 exposes the full MeshCore companion/admin protocol without application authentication, so use station mode only on a trusted private LAN.
 
 ## RC1 validation
 
@@ -94,7 +102,7 @@ Validated on physical hardware:
 - Stable USB enumeration across repeated observation windows and manual resets.
 - BLE advertisement as `MeshCore-<node name>` with Nordic UART service `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`.
 - Secure six-digit PIN authentication, node load in the companion app, disconnect, re-advertise, and reconnect.
-- Native landscape UI and Quick Menu opening on the device.
+- Native landscape UI and one-button navigation on the device.
 - Battery-powered boot and display operation.
 
 Still to qualify before final 1.0:
