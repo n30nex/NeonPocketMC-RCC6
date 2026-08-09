@@ -6,12 +6,20 @@
   <meta name="theme-color" content="#050608">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="application-name" content="NeonPocketMC">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; img-src 'self' data:; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; object-src 'none'">
-  <title>MeshCore · RCC6</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23050608'/%3E%3Cpath d='M10 22h44v34H10z' fill='none' stroke='%2339e7ff' stroke-width='4'/%3E%3Cpath d='m32 30-14 18h28z' fill='none' stroke='%232457ff' stroke-width='4' stroke-linejoin='round'/%3E%3Cpath d='M16 14h6M31 6v8M44 11l5-3' fill='none' stroke='%2339e7ff' stroke-width='4'/%3E%3Cpath d='M28 26h8v8h-8zM14 44h8v8h-8zM42 44h8v8h-8z' fill='%2344f08a'/%3E%3C/svg%3E">
+  <title>NeonPocketMC · RCC6</title>
   <style>/*__RCC6_CSS__*/</style>
 </head>
 <body>
   <svg class="svg-defs" aria-hidden="true">
+    <symbol id="brand-pocket" viewBox="0 0 64 64">
+      <path d="M10 22h44v34H10z" fill="none" stroke="#39e7ff" stroke-width="4"/>
+      <path d="m32 30-14 18h28z" fill="none" stroke="#2457ff" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M16 14h6M31 6v8M44 11l5-3" fill="none" stroke="#39e7ff" stroke-width="4"/>
+      <path d="M28 26h8v8h-8zM14 44h8v8h-8zM42 44h8v8h-8z" fill="#44f08a" stroke="none"/>
+    </symbol>
     <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5v8a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
     <symbol id="i-msg" viewBox="0 0 24 24"><path d="M4 5.5h16v11H9l-5 3z"/></symbol>
     <symbol id="i-near" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4m8.4-8.4a6 6 0 0 1 0 8.4M4.6 4.6a10.5 10.5 0 0 0 0 14.8m14.8-14.8a10.5 10.5 0 0 1 0 14.8"/></symbol>
@@ -23,7 +31,7 @@
 
   <div class="shell">
     <aside class="sidebar">
-      <div class="brand"><span class="brand-mark"><i></i></span><span>MeshCore<small>RCC6 Web</small></span></div>
+      <div class="brand"><svg class="brand-mark" aria-hidden="true"><use href="#brand-pocket"/></svg><span>NeonPocketMC<small>MeshCore · RCC6 Web</small></span></div>
       <nav class="nav" aria-label="Primary">
         <button class="active" data-view="home"><svg><use href="#i-home"/></svg><span>Home</span></button>
         <button data-view="messages"><svg><use href="#i-msg"/></svg><span>Messages</span><b id="nav-unread" hidden>0</b></button>
@@ -140,7 +148,7 @@
       <section class="screen" data-screen="more">
         <div class="more-grid">
           <article class="card device-card">
-            <p class="eyebrow">DEVICE</p><div class="device-icon"><span class="brand-mark"><i></i></span></div>
+            <p class="eyebrow">DEVICE</p><div class="device-icon"><svg class="brand-mark" aria-hidden="true"><use href="#brand-pocket"/></svg></div>
             <h2 id="more-name">RCC6</h2><p id="more-model">MeshCore Companion</p>
             <dl><div><dt>Firmware</dt><dd id="more-firmware">—</dd></div><div><dt>Build</dt><dd id="more-build">—</dd></div><div><dt>Public key</dt><dd id="more-key">—</dd></div></dl>
           </article>
@@ -148,7 +156,7 @@
             <article class="card action-card"><div><p class="eyebrow">PRESENCE</p><h3>Advertise this node</h3><p>Queue a flood advert so nearby MeshCore nodes can discover you.</p></div><button class="primary-button" id="advert-button">Advert now</button></article>
             <article class="card action-card"><div><p class="eyebrow">CONNECTION</p><h3 id="more-network-title">RCC6 setup AP</h3><p id="ap-address">Connected through this device at 192.168.4.1</p></div><div class="action-buttons"><button class="secondary-button" id="refresh-button">Sync now</button><button class="secondary-button danger-button" id="return-ap-button" hidden>Return to setup AP</button></div></article>
             <article class="card action-card"><div><p class="eyebrow">PRIVACY</p><h3>Local message history</h3><p>Up to 120 messages are kept in this browser for this node. Clear them whenever you like.</p></div><button class="secondary-button" id="clear-history-button">Clear history</button></article>
-            <article class="card about-card"><div><p class="eyebrow">ABOUT</p><h3>MeshCore Web</h3><p>Offline companion UI · v<span id="app-version">—</span><br>Powered by MeshCore.js <span id="library-version">—</span> · MIT © Liam Cottle</p></div></article>
+            <article class="card about-card"><div><p class="eyebrow">ABOUT</p><h3>NeonPocketMC Web</h3><p>Offline MeshCore companion · v<span id="app-version">—</span><br>Powered by MeshCore.js <span id="library-version">—</span> · MIT © Liam Cottle</p></div></article>
           </div>
         </div>
       </section>
@@ -175,7 +183,7 @@
   </dialog>
 
   <div class="toast-stack" id="toasts" aria-live="polite"></div>
-  <div class="boot" id="boot"><span class="brand-mark large"><i></i></span><strong>MeshCore</strong><small>Connecting to RCC6…</small><div class="boot-line"><i></i></div></div>
+  <div class="boot" id="boot"><svg class="brand-mark large" aria-hidden="true"><use href="#brand-pocket"/></svg><strong>NeonPocketMC</strong><small>MeshCore companion · RCC6</small><div class="boot-line"><i></i></div></div>
   <script>/*__RCC6_JS__*/</script>
 </body>
 </html>

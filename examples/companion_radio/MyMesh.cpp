@@ -497,6 +497,10 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
   // we only want to show text messages on display, not cli data
   bool should_display = txt_type == TXT_TYPE_PLAIN || txt_type == TXT_TYPE_SIGNED_PLAIN;
   if (should_display && _ui) {
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+    memcpy(_ui_reply_pubkey_prefix, from.id.pub_key, sizeof(_ui_reply_pubkey_prefix));
+    _ui_reply_target = UIReplyTarget::Direct;
+#endif
     _ui->newMsgWithEvent(path_len, from.name, text, offline_queue_len,
                          UIEventType::contactMessage);
     if (!_serial->isConnected()) {
@@ -584,7 +588,12 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
     out_frame[i++] = RESP_CODE_CHANNEL_MSG_RECV;
   }
 
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+  int found_channel_idx = findChannelIdx(channel);
+  uint8_t channel_idx = (uint8_t)found_channel_idx;
+#else
   uint8_t channel_idx = findChannelIdx(channel);
+#endif
   out_frame[i++] = channel_idx;
   uint8_t path_len = out_frame[i++] = pkt->isRouteFlood() ? pkt->path_len : 0xFF;
 
@@ -614,6 +623,12 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
   ChannelDetails channel_details;
   if (getChannel(channel_idx, channel_details)) {
     channel_name = channel_details.name;
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+    if (found_channel_idx >= 0) {
+      _ui_reply_channel = channel_idx;
+      _ui_reply_target = UIReplyTarget::Channel;
+    }
+#endif
   }
   if (_ui) {
     _ui->newMsgWithEvent(path_len, channel_name, text, offline_queue_len,
@@ -2286,6 +2301,39 @@ void MyMesh::loop() {
   if (_ui) _ui->setHasConnection(_serial->isConnected());
 #endif
 }
+
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+bool MyMesh::sendQuickReplyToLatest(const char* text) {
+  if (text == nullptr || text[0] == 0) return false;
+
+  uint32_t timestamp = getRTCClock()->getCurrentTimeUnique();
+  if (_ui_reply_target == UIReplyTarget::Direct) {
+    ContactInfo* recipient = lookupContactByPubKey(_ui_reply_pubkey_prefix,
+                                                    sizeof(_ui_reply_pubkey_prefix));
+    if (recipient == nullptr) return false;
+
+    uint32_t expected_ack = 0;
+    uint32_t est_timeout = 0;
+    int result = sendMessage(*recipient, timestamp, 0, text, expected_ack, est_timeout);
+    if (result == MSG_SEND_FAILED) return false;
+
+    if (expected_ack) {
+      expected_ack_table[next_ack_idx].msg_sent = _ms->getMillis();
+      expected_ack_table[next_ack_idx].ack = expected_ack;
+      expected_ack_table[next_ack_idx].contact = recipient;
+      next_ack_idx = (next_ack_idx + 1) % EXPECTED_ACK_TABLE_SIZE;
+    }
+    return true;
+  }
+
+  if (_ui_reply_target == UIReplyTarget::Channel) {
+    ChannelDetails channel;
+    return getChannel(_ui_reply_channel, channel) &&
+           sendGroupMessage(timestamp, channel.channel, _prefs.node_name, text, strlen(text));
+  }
+  return false;
+}
+#endif
 
 bool MyMesh::advert(bool flood) {
 #ifdef NEONPOCKET_UI

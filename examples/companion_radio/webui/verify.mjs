@@ -12,6 +12,7 @@ for (const required of [
   "Home", "Messages", "Nearby", "Radio", "More", "/api/frame", "/api/network",
   "X-RCC6-Session", "application/x-www-form-urlencoded", "Set up local Wi-Fi",
   "meshcore", "localStorage", "rcc6-radio-owner", "rcc6-history-pending-", "syncNextMessage", "MeshCore.js",
+  "NeonPocketMC", "brand-pocket",
 ]) {
   if (!html.includes(required)) throw new Error(`Built UI is missing ${required}`);
 }

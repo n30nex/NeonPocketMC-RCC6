@@ -43,6 +43,46 @@ static constexpr int UI_MAX_UNREAD_MSGS = 32;
 
 #include "icons.h"
 
+#ifdef NEONPOCKET_UI
+static void drawNeonPocketMark(DisplayDriver& display, int x, int y, uint8_t phase) {
+  if (phase >= 1) {
+    display.setColor(0x07FF);  // cyan pocket
+    display.drawRect(x, y + 8, 40, 24);
+  }
+  if (phase >= 2) {
+    display.setColor(NEON_BLUE);  // cobalt mesh links
+    display.fillRect(x + 11, y + 26, 18, 2);
+    display.fillRect(x + 13, y + 23, 3, 2);
+    display.fillRect(x + 15, y + 20, 3, 2);
+    display.fillRect(x + 17, y + 17, 3, 2);
+    display.fillRect(x + 21, y + 17, 3, 2);
+    display.fillRect(x + 23, y + 20, 3, 2);
+    display.fillRect(x + 25, y + 23, 3, 2);
+  }
+  if (phase >= 3) {
+    display.setColor(NEON_GREEN);  // three mesh nodes
+    display.fillRect(x + 18, y + 13, 5, 5);
+    display.fillRect(x + 8, y + 24, 5, 5);
+    display.fillRect(x + 28, y + 24, 5, 5);
+  }
+  if (phase >= 4) {
+    display.setColor(0x07FF);  // packet sparks
+    display.fillRect(x + 7, y + 3, 4, 2);
+    display.fillRect(x + 19, y, 2, 5);
+    display.fillRect(x + 30, y + 2, 3, 3);
+  }
+}
+
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+static const char* const RCC6_QUICK_REPLIES[] = {
+  "OK", "YES", "NO", "ON MY WAY", "NEED HELP", "73"
+};
+static constexpr uint8_t RCC6_QUICK_REPLY_COUNT =
+    sizeof(RCC6_QUICK_REPLIES) / sizeof(RCC6_QUICK_REPLIES[0]);
+static constexpr unsigned long RCC6_QUICK_REPLY_SCAN_MILLIS = 800;
+#endif
+#endif
+
 class SplashScreen : public UIScreen {
   UITask* _task;
   unsigned long dismiss_after;
@@ -72,28 +112,37 @@ public:
   int render(DisplayDriver& display) override {
 #ifdef NEONPOCKET_UI
     const unsigned long elapsed = millis() - started_at;
-    const int logo_x = (display.width() - 128) / 2;
-    const int sweep_width = elapsed >= 600 ? display.width() - 24
-        : (int)((display.width() - 24) * elapsed / 600);
+    uint8_t phase = 1 + elapsed / 180;
+    if (phase > 4) phase = 4;
+    const unsigned long progress_elapsed = elapsed < BOOT_SCREEN_MILLIS
+        ? elapsed : BOOT_SCREEN_MILLIS;
+    const int progress_width = 164 * progress_elapsed / BOOT_SCREEN_MILLIS;
 
-    display.setColor(NEON_BLUE);
-    display.drawXbm(logo_x, 14, meshcore_logo, 128, 13);
-    display.fillRect(12, 35, sweep_width, 2);
-
-    if (elapsed >= 300) {
+    drawNeonPocketMark(display, (display.width() - 40) / 2, 6, phase);
+    if (elapsed >= 240) {
+      display.setTextSize(2);
+      display.setColor(NEON_GREEN);
+      display.drawTextCentered(display.width() / 2, 43, "NEONPOCKETMC");
+    }
+    if (elapsed >= 480) {
       display.setTextSize(1);
       display.setColor(NEON_LIGHT);
-      display.drawTextCentered(display.width() / 2, 45, "meshcore.io");
-    }
-    if (elapsed >= 600) {
-      display.setColor(NEON_GREEN);
-      display.drawTextCentered(display.width() / 2, 67, "COMPANION RADIO");
-      display.setColor(NEON_LIGHT);
-      display.drawTextCentered(display.width() / 2, 88, _version_info);
-      display.drawTextCentered(display.width() / 2, 105, FIRMWARE_BUILD_DATE);
+      display.drawTextCentered(display.width() / 2, 65, "MESHCORE COMPANION");
     }
 
-    return elapsed < 900 ? NEON_FRAME_MILLIS : 500;
+    display.setColor(NEON_BLUE);
+    display.drawRect(26, 82, 168, 8);
+    display.setColor(NEON_YELLOW);
+    display.fillRect(28, 84, progress_width, 4);
+    display.setTextSize(1);
+    display.setColor(NEON_LIGHT);
+    display.setCursor(26, 99);
+    display.print(_version_info);
+    display.drawTextRightAlign(display.width() - 26, 99, FIRMWARE_BUILD_DATE);
+    display.setColor(NEON_BLUE);
+    display.drawTextCentered(display.width() / 2, 114, "LOADING RADIO");
+
+    return elapsed < BOOT_SCREEN_MILLIS ? NEON_FRAME_MILLIS : 500;
 #else
     // meshcore logo
     display.setColor(NEON_BLUE);
@@ -134,6 +183,10 @@ class HomeScreen : public UIScreen {
     RADIO,
     BLUETOOTH,
     ADVERT,
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+    QUICK_REPLY,
+    DIAGNOSTICS,
+#endif
 #if ENV_INCLUDE_GPS == 1
     GPS,
 #endif
@@ -155,6 +208,20 @@ class HomeScreen : public UIScreen {
   int8_t _transition_dir = 0;
   unsigned long _transition_started = 0;
   bool _transition_pending = false;
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+  uint8_t _quick_reply_index = 0;
+  bool _quick_reply_confirm = false;
+  bool _quick_reply_pressed = false;
+  unsigned long _quick_reply_next = 0;
+
+  void startQuickReplyScan() {
+    _quick_reply_index = 0;
+    _quick_reply_confirm = false;
+    _quick_reply_pressed = false;
+    _quick_reply_next = millis() + 1200;
+    _task->requestRefresh();
+  }
+#endif
 #endif
 
 
@@ -250,6 +317,10 @@ class HomeScreen : public UIScreen {
         return "BLUETOOTH";
 #endif
       case HomePage::ADVERT: return "ADVERTISE";
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+      case HomePage::QUICK_REPLY: return "QUICK REPLY";
+      case HomePage::DIAGNOSTICS: return "DIAGNOSTICS";
+#endif
 #if ENV_INCLUDE_GPS == 1
       case HomePage::GPS: return "GPS";
 #endif
@@ -274,6 +345,11 @@ class HomeScreen : public UIScreen {
 #endif
     }
     if (_page == HomePage::ADVERT) return "CLICK NEXT  2X SEND";
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+    if (_page == HomePage::QUICK_REPLY) {
+      return _quick_reply_confirm ? "2X CONFIRM" : "2X SELECT";
+    }
+#endif
     return "CLICK NEXT";
   }
 
@@ -555,6 +631,59 @@ class HomeScreen : public UIScreen {
       display.drawTextCentered(146, 70, "Announce this node");
       display.setColor(NEON_BLUE);
       display.drawTextCentered(146, 90, "Double to send");
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+    } else if (_page == HomePage::QUICK_REPLY) {
+      display.setTextSize(1);
+      if (_quick_reply_confirm) {
+        display.setColor(NEON_YELLOW);
+        display.drawRect(8, 40, display.width() - 16, 48);
+        display.drawTextCentered(display.width() / 2, 46, "CONFIRM QUICK REPLY");
+        display.setTextSize(2);
+        display.setColor(NEON_LIGHT);
+        display.drawTextCentered(display.width() / 2, 62,
+            RCC6_QUICK_REPLIES[_quick_reply_index]);
+        display.setTextSize(1);
+        display.setColor(NEON_ORANGE);
+        display.drawTextCentered(display.width() / 2, 94, "DOUBLE-PRESS TO SEND");
+      } else {
+        for (uint8_t i = 0; i < RCC6_QUICK_REPLY_COUNT; i++) {
+          const int x = 4 + (i % 2) * 108;
+          const int y = 38 + (i / 2) * 23;
+          const bool selected = i == _quick_reply_index;
+          display.setColor(selected ? NEON_YELLOW : NEON_BLUE);
+          display.drawRect(x, y, 104, 20);
+          display.setColor(selected ? NEON_YELLOW : NEON_LIGHT);
+          display.drawTextCentered(x + 52, y + 6, RCC6_QUICK_REPLIES[i]);
+        }
+      }
+    } else if (_page == HomePage::DIAGNOSTICS) {
+      const uint32_t uptime = _task->getCachedUptimeSeconds();
+      display.setTextSize(1);
+      display.setColor(NEON_BLUE);
+      display.drawRect(4, 38, display.width() - 8, 32);
+      display.drawRect(4, 75, display.width() - 8, 34);
+      display.setColor(NEON_LIGHT);
+      snprintf(tmp, sizeof(tmp), "UP %luh%02lum   BAT %umV",
+          (unsigned long)(uptime / 3600), (unsigned long)((uptime / 60) % 60),
+          (unsigned)_task->getCachedBattMilliVolts());
+      display.setCursor(9, 43);
+      display.print(tmp);
+      snprintf(tmp, sizeof(tmp), "HEAP %luK   MAX %luK",
+          (unsigned long)(_task->getCachedHeapFree() / 1024),
+          (unsigned long)(_task->getCachedHeapMax() / 1024));
+      display.setCursor(9, 57);
+      display.print(tmp);
+      snprintf(tmp, sizeof(tmp), "RX %lu   TX %lu",
+          (unsigned long)_task->getCachedRxPackets(),
+          (unsigned long)_task->getCachedTxPackets());
+      display.setCursor(9, 81);
+      display.print(tmp);
+      display.setColor(_task->getCachedRxErrors() ? NEON_RED : NEON_GREEN);
+      snprintf(tmp, sizeof(tmp), "ERR %lu   NOISE %ddBm",
+          (unsigned long)_task->getCachedRxErrors(), (int)_task->getCachedNoiseFloor());
+      display.setCursor(9, 95);
+      display.print(tmp);
+#endif
 #if ENV_INCLUDE_GPS == 1
     } else if (_page == HomePage::GPS) {
       LocationProvider* nmea = _sensors->getLocationProvider();
@@ -867,6 +996,28 @@ public:
 #endif
   }
 
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+  void poll() override {
+    if (_page != HomePage::QUICK_REPLY || _quick_reply_confirm) return;
+
+    const unsigned long now = millis();
+    if (_task->isButtonPressed()) {
+      _quick_reply_pressed = true;
+      return;
+    }
+    if (_quick_reply_pressed) {
+      _quick_reply_pressed = false;
+      _quick_reply_next = now + RCC6_QUICK_REPLY_SCAN_MILLIS;
+      return;
+    }
+    if ((int32_t)(now - _quick_reply_next) >= 0) {
+      _quick_reply_index = (_quick_reply_index + 1) % RCC6_QUICK_REPLY_COUNT;
+      _quick_reply_next = now + RCC6_QUICK_REPLY_SCAN_MILLIS;
+      _task->requestRefresh();
+    }
+  }
+#endif
+
   bool handleInput(char c) override {
     if (c == KEY_LEFT || c == KEY_PREV) {
       _page = (_page + HomePage::Count - 1) % HomePage::Count;
@@ -874,6 +1025,10 @@ public:
       _transition_dir = -1;
       _transition_started = 0;
       _transition_pending = true;
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+      if (_page == HomePage::QUICK_REPLY) startQuickReplyScan();
+      else _quick_reply_confirm = false;
+#endif
 #endif
       return true;
     }
@@ -883,6 +1038,10 @@ public:
       _transition_dir = 1;
       _transition_started = 0;
       _transition_pending = true;
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+      if (_page == HomePage::QUICK_REPLY) startQuickReplyScan();
+      else _quick_reply_confirm = false;
+#endif
 #endif
       if (_page == HomePage::RECENT) {
 #ifndef NEONPOCKET_UI
@@ -894,6 +1053,21 @@ public:
 #ifdef NEONPOCKET_UI
     if (c == KEY_ENTER && _page == HomePage::FIRST && _task->getMsgCount() > 0) {
       _task->gotoMsgPreviewScreen();
+      return true;
+    }
+#endif
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+    if (c == KEY_ENTER && _page == HomePage::QUICK_REPLY) {
+      if (!_quick_reply_confirm) {
+        _quick_reply_confirm = true;
+        _task->requestRefresh();
+      } else {
+        const bool sent = the_mesh.sendQuickReplyToLatest(
+            RCC6_QUICK_REPLIES[_quick_reply_index]);
+        _task->showAlert(sent ? "Quick Reply sent" : "Quick Reply failed", 1200,
+                         sent ? NEON_GREEN : NEON_RED);
+        startQuickReplyScan();
+      }
       return true;
     }
 #endif
@@ -1218,6 +1392,18 @@ public:
   }
 };
 
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+void UITask::sampleDiagnostics() {
+  _cached_uptime_seconds = millis() / 1000;
+  _cached_rx_packets = radio_driver.getPacketsRecv();
+  _cached_tx_packets = radio_driver.getPacketsSent();
+  _cached_rx_errors = radio_driver.getPacketsRecvErrors();
+  _cached_noise_floor = radio_driver.getNoiseFloor();
+  _cached_heap_free = ESP.getFreeHeap();
+  _cached_heap_max = ESP.getMaxAllocHeap();
+}
+#endif
+
 void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* node_prefs) {
   _display = display;
   _sensors = sensors;
@@ -1263,6 +1449,10 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
     _battery_low_warning = true;
     showAlert("Battery low", 1200, NEON_RED);
   }
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+  sampleDiagnostics();
+  _next_diag_sample = millis() + 5000;
+#endif
 #endif
 
   splash = new SplashScreen(this);
@@ -1572,6 +1762,13 @@ void UITask::loop() {
     }
     _next_refresh = 0;
   }
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+  if ((int32_t)(event_now - _next_diag_sample) >= 0) {
+    sampleDiagnostics();
+    _next_diag_sample = millis() + 5000;
+    _next_refresh = 0;
+  }
+#endif
   if (_radio_rx_pending) {
     _radio_rx_pending = false;
     if (_display != NULL && _display->isOn() &&
