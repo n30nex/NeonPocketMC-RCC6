@@ -41,6 +41,7 @@ if (/<script\s+[^>]*src=|<link\s+[^>]*rel=[\"']stylesheet/i.test(html)) {
 }
 
 const gzip = gzipSync(Buffer.from(html), { level: 9, mtime: 0 });
+gzip[9] = 0xff; // RFC 1952 OS=unknown keeps the asset identical across build hosts.
 if (gunzipSync(gzip).toString("utf8") !== html) throw new Error("Gzip round-trip failed");
 const digest = createHash("sha256").update(gzip).digest("hex");
 const rows = [];
