@@ -13,6 +13,14 @@ Experimental MeshCore 1.17 companion firmware for the **Heltec RadioCore RCC6** 
   <img src="docs/images/neon-pocket-on-device.jpg" alt="NeonPocket dashboard running on a Heltec RadioCore RCC6" width="760">
 </p>
 
+## Demo-scene startup
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/n30nex/NeonPocketMC/main/docs/images/demoscene/neonpocket-splash.gif" alt="NeonPocketMC animated demo-scene boot sequence" width="660">
+</p>
+
+This is a direct, checksum-verified capture of the RCC6 220×128 framebuffer running the production renderer—not a browser mockup. Exact frame provenance is maintained in the [unified gallery](https://github.com/n30nex/NeonPocketMC/tree/main/docs/images/demoscene).
+
 ## Release status
 
 The current experimental release is [`v1.2.0-rc.1`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.1). It adds the animated NeonPocketMC startup, Diagnostics, and Quick Reply to both companion modes. Use only files attached to that release; short-lived Actions artifacts are development builds.
