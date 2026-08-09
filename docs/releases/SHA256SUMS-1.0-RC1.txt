@@ -1,0 +1,2 @@
+74d4edebaee2300b78e6fdbe9fc6d2b30c36fd5454d07ae71d7001800de78c46  RadioCore2-RCC6-1.0-RC1-app.bin
+06e2e56e5ed4e59a7e56297195b03e573e098ff7e9ec6ea6540c1f22e9ac2908  RadioCore2-RCC6-1.0-RC1-full-recovery-wipes-settings.bin

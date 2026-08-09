@@ -1,128 +1,150 @@
-## About MeshCore
+# RadioCore²-RCC6
 
-MeshCore is a lightweight, portable C++ library that enables multi-hop packet routing for embedded projects using LoRa and other packet radios. It is designed for developers who want to create resilient, decentralized communication networks that work without the internet.
+MeshCore Companion Bluetooth firmware for the **Heltec RadioCore RCC6** with its native **220×128 NV3001B TFT**.
 
-## 🔍 What is MeshCore?
+[![Release](https://img.shields.io/github/v/release/n30nex/RadioCore2-RCC6?include_prereleases&label=firmware)](https://github.com/n30nex/RadioCore2-RCC6/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](license.txt)
+[![Target: ESP32-C6](https://img.shields.io/badge/target-ESP32--C6-00bcd4)](#supported-hardware)
 
-MeshCore now supports a range of LoRa devices, allowing for easy flashing without the need to compile firmware manually. Users can flash a pre-built binary using tools like Adafruit ESPTool and interact with the network through a serial console.
-MeshCore provides the ability to create wireless mesh networks, similar to Meshtastic and Reticulum but with a focus on lightweight multi-hop packet routing for embedded projects. Unlike Meshtastic, which is tailored for casual LoRa communication, or Reticulum, which offers advanced networking, MeshCore balances simplicity with scalability, making it ideal for custom embedded solutions, where devices (nodes) can communicate over long distances by relaying messages through intermediate nodes. This is especially useful in off-grid, emergency, or tactical situations where traditional communication infrastructure is unavailable.
+> **1.0 RC1 is a release candidate.** Display, USB stability, BLE advertising, secure PIN pairing, companion synchronization, disconnect/re-advertise, and reconnect were validated on physical RCC6 hardware. End-to-end LoRa field qualification and every notification-failure path remain RC work.
 
-## ⚡ Key Features
+## On-device UI
 
-* Multi-Hop Packet Routing
-  * Devices can forward messages across multiple nodes, extending range beyond a single radio's reach.
-  * Supports up to a configurable number of hops to balance network efficiency and prevent excessive traffic.
-  * Nodes use fixed roles where "Companion" nodes are not repeating messages at all to prevent adverse routing paths from being used.
-* Supports LoRa Radios – Works with Heltec, RAK Wireless, and other LoRa-based hardware.
-* Decentralized & Resilient – No central server or internet required; the network is self-healing.
-* Low Power Consumption – Ideal for battery-powered or solar-powered devices.
-* Simple to Deploy – Pre-built example applications make it easy to get started.
+<p align="center">
+  <img src="docs/images/neon-pocket-on-device.jpg" alt="RadioCore RCC6 running the Neon Pocket MeshCore dashboard from battery power" width="760">
+</p>
 
-## 🎯 What Can You Use MeshCore For?
+<p align="center"><em>Neon Pocket dashboard running on a battery-powered RadioCore RCC6.</em></p>
 
-* Off-Grid Communication: Stay connected even in remote areas.
-* Emergency Response & Disaster Recovery: Set up instant networks where infrastructure is down.
-* Outdoor Activities: Hiking, camping, and adventure racing communication.
-* Tactical & Security Applications: Military, law enforcement, and private security use cases.
-* IoT & Sensor Networks: Collect data from remote sensors and relay it back to a central location.
+<details>
+<summary>RadioCore hardware</summary>
 
-## 🚀 How to Get Started
+<p align="center">
+  <img src="docs/images/radiocore-hardware.jpg" alt="Two RadioCore units with attached TFT boards" width="620">
+</p>
 
-- Watch the [MeshCore QuickStart Playlist](https://www.youtube.com/watch?v=iaFltojJrAc&list=PLshzThxhw4O4WU_iZo3NmNZOv6KMrUuF9) by The Comms Channel
-- Watch the [MeshCore Technical Presentation](https://www.youtube.com/watch?v=OwmkVkZQTf4) by Liam Cottle.
-- Read through our [Frequently Asked Questions](./docs/faq.md) and [Documentation](https://docs.meshcore.io).
-- Flash the MeshCore firmware on a supported device.
-- Connect with a supported client.
+</details>
 
-For developers:
+## What RC1 adds
 
-- Install [PlatformIO](https://docs.platformio.org) in [Visual Studio Code](https://code.visualstudio.com).
-- Clone and open the MeshCore repository in Visual Studio Code.
-- See the example applications you can modify and run:
-  - [Companion Radio](./examples/companion_radio) - For use with an external chat app, over BLE, USB or Wi-Fi.
-  - [KISS Modem](./examples/kiss_modem) - Serial KISS protocol bridge for host applications. ([protocol docs](./docs/kiss_modem_protocol.md))
-  - [Simple Repeater](./examples/simple_repeater) - Extends network coverage by relaying messages.
-  - [Simple Room Server](./examples/simple_room_server) - A simple BBS server for shared Posts.
-  - [Simple Secure Chat](./examples/simple_secure_chat) - Secure terminal based text communication between devices.
-  - [Simple Sensor](./examples/simple_sensor) - Remote sensor node with telemetry and alerting.
+- Native landscape **220×128** phone-style dashboard for the RCC6 TFT.
+- Home cards for unread messages and recent adverts.
+- BLE, battery, RF, unread, RX/TX, RSSI, and SNR status at a glance.
+- Recent nodes, radio settings, Bluetooth, Advert, Power, and message views.
+- Color-coded visual notifications for messages, nearby nodes, BLE state, adverts, and low battery.
+- One-button Quick Menu and screen-off/wake behavior.
+- Subtle page transitions and notification motion.
+- RGB565 framebuffer with 8-row delta flushing; measured RC1 delta frame: **121 ms** versus **342–360 ms** for a full frame.
+- Static BLE frame queues sized for companion synchronization bursts.
+- DIO flash mode for RCC6 compatibility.
 
-The Simple Secure Chat example can be interacted with through the Serial Monitor in Visual Studio Code, or with a Serial USB Terminal on Android.
+## Controls
 
-## ⚡️ MeshCore Flasher
+| Action | Result |
+|---|---|
+| Press while screen is off | Wake the display; the press is consumed |
+| Press while screen is on | Next page or next menu item |
+| Hold | Open Quick Menu |
+| Press in Quick Menu | Move the highlight |
+| Hold in Quick Menu | Select the highlighted action |
 
-We have prebuilt firmware ready to flash on supported devices.
+Wait at least eight seconds after boot before using Hold; the early-boot hold remains MeshCore's CLI rescue gesture.
 
-- Launch https://meshcore.io/flasher
-- Select a supported device
-- Flash one of the firmware types:
-  - Companion, Repeater or Room Server
-- Once flashing is complete, you can connect with one of the MeshCore clients below.
+## Supported hardware
 
-## 📱 MeshCore Clients
+- Heltec **RadioCore RCC6** / ESP32-C6
+- RCC6 LoRa module configuration used by the upstream `heltec_rcc6` target
+- Attached Heltec NV3001B **220×128 TFT**
+- BLE companion mode
 
-**Companion Firmware**
+> [!CAUTION]
+> This build targets **RCC6 only**. Do not flash it onto RadioCore RC32, RC52, or unrelated ESP32 boards.
 
-The companion firmware can be connected to via BLE, USB or Wi-Fi depending on the firmware type you flashed.
+Attach a suitable antenna before transmitting. For battery use, use a protected single-cell 3.7 V Li-ion/LiPo pack and verify that the pack permits the board's configured charging current before charging it from USB.
 
-- Web: https://app.meshcore.nz
-- Android: https://play.google.com/store/apps/details?id=com.liamcottle.meshcore.android
-- iOS: https://apps.apple.com/us/app/meshcore/id6742354151?platform=iphone
-- NodeJS: https://github.com/liamcottle/meshcore.js
-- Python: https://github.com/fdlamotte/meshcore-cli
+## Download 1.0 RC1
 
-**Repeater and Room Server Firmware**
+Download assets from the [1.0 RC1 release](https://github.com/n30nex/RadioCore2-RCC6/releases/tag/v1.0.0-rc.1).
 
-The repeater and room server firmware can be set up via USB in the web config tool.
+| File | Use | Flash offset | Settings |
+|---|---|---:|---|
+| `RadioCore2-RCC6-1.0-RC1-app.bin` | Recommended update for an already provisioned RCC6 | `0x10000` | Preserved |
+| `RadioCore2-RCC6-1.0-RC1-full-recovery-wipes-settings.bin` | Complete bootloader/partition/app recovery image | `0x0` | **Erased** |
+| `SHA256SUMS.txt` | Release integrity checks | — | — |
 
-- https://config.meshcore.io
+### Recommended: settings-preserving update
 
-They can also be managed via LoRa in the mobile app by using the Remote Management feature.
+Install the current [Espressif esptool](https://docs.espressif.com/projects/esptool/en/latest/esp32c6/):
 
-## 🛠 Hardware Compatibility
+```shell
+python -m pip install --upgrade esptool
+```
 
-MeshCore is designed for devices listed in the [MeshCore Flasher](https://meshcore.io/flasher)
+Replace `COM21` with your RCC6 port:
 
-## 📜 License
+```shell
+esptool --chip esp32c6 --port COM21 write-flash 0x10000 RadioCore2-RCC6-1.0-RC1-app.bin
+esptool --chip esp32c6 --port COM21 verify-flash 0x10000 RadioCore2-RCC6-1.0-RC1-app.bin
+```
 
-MeshCore is open-source software released under the MIT License. You are free to use, modify, and distribute it for personal and commercial projects.
+This writes only the application partition. It does not erase the existing node identity, contacts, channels, pairing PIN, or other persisted settings.
+
+### Full recovery
+
+> [!WARNING]
+> The full-recovery image overwrites the complete merged image range and **wipes persisted MeshCore identity, settings, and BLE bonds**. Back up anything important first. After recovery, forget the old bond on the phone and pair again using the PIN currently shown on the TFT.
+
+```shell
+esptool --chip esp32c6 --port COM21 write-flash 0x0 RadioCore2-RCC6-1.0-RC1-full-recovery-wipes-settings.bin
+esptool --chip esp32c6 --port COM21 verify-flash 0x0 RadioCore2-RCC6-1.0-RC1-full-recovery-wipes-settings.bin
+```
+
+Do not add `erase-flash` or `--erase-all` to the app-only update.
+
+## Build from source
+
+This repository is based on MeshCore `v1.16.0` development source at upstream commit `fff37407652534d2077d121a7e51c920ec937bcb`.
+
+```shell
+git clone https://github.com/n30nex/RadioCore2-RCC6.git
+cd RadioCore2-RCC6
+pio run -e heltec_rcc6_companion_radio_ble
+```
+
+The application binary is produced under:
+
+```text
+.pio/build/heltec_rcc6_companion_radio_ble/firmware.bin
+```
+
+## RC1 validation
+
+Validated on physical hardware:
+
+- Exact ESP32-C6 USB identity and DIO firmware header.
+- App-only flash at `0x10000` with byte-for-byte `verify-flash` success.
+- Framebuffer allocation: 56,320 bytes.
+- Full TFT flush: 342–360 ms; five-band delta flush: 121 ms.
+- Stable USB enumeration across repeated observation windows and manual resets.
+- BLE advertisement as `MeshCore-<node name>` with Nordic UART service `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`.
+- Secure six-digit PIN authentication, node load in the companion app, disconnect, re-advertise, and reconnect.
+- Native landscape UI and Quick Menu opening on the device.
+- Battery-powered boot and display operation.
+
+Still to qualify before final 1.0:
+
+- End-to-end LoRa RX/TX receipts with a second radio.
+- Complete one-button action matrix.
+- Every notification color and animation path.
+- Controlled low-battery and transmit-failure paths.
+- Measured battery runtime and charging qualification.
+
+## Upstream and license
+
+RadioCore²-RCC6 is a community firmware build, not an official Heltec or MeshCore release.
+
+It is built on [MeshCore](https://github.com/meshcore-dev/MeshCore) and retains the upstream MIT license and copyright notice in [`license.txt`](license.txt). Dependency licenses and exact source pointers are listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). Thanks to the MeshCore contributors and Heltec RadioCore beta community.
 
 ## Contributing
 
-Please submit PR's using 'dev' as the base branch!
-For minor changes just submit your PR and we'll try to review it, but for anything more 'impactful' please open an Issue first and start a discussion. It is better to sound out what it is you want to achieve first, and try to come to a consensus on what the best approach is, especially when it impacts the structure or architecture of this codebase.
-
-Here are some general principles you should try to adhere to:
-* Keep it simple. Please, don't think like a high-level lang programmer. Think embedded, and keep code concise, without any unnecessary layers.
-* No dynamic memory allocation, except during setup/begin functions.
-* Use the same brace and indenting style that's in the core source modules. (A .clang-format is probably going to be added soon, but please do NOT retroactively re-format existing code. This just creates unnecessary diffs that make finding problems harder)
-
-Help us prioritize! Please react with thumbs-up to issues/PRs you care about most. We look at reaction counts when planning work.
-
-### Running unit tests
-
-To run unit tests, run the following command:
-
-```bash
-pio test --environment native --verbose
-```
-
-## Road-Map / To-Do
-
-There are a number of fairly major features in the pipeline, with no particular time-frames attached yet. In very rough chronological order:
-- [X] Companion radio: UI redesign
-- [X] Repeater + Room Server: add ACL's (like Sensor Node has)
-- [X] Standardise Bridge mode for repeaters
-- [ ] Repeater/Bridge: Standardise the Transport Codes for zoning/filtering
-- [X] Core + Repeater: enhanced zero-hop neighbour discovery
-- [ ] Core: round-trip manual path support
-- [ ] Companion + Apps: support for multiple sub-meshes (and 'off-grid' client repeat mode)
-- [ ] Core + Apps: support for LZW message compression
-- [ ] Core: dynamic CR (Coding Rate) for weak vs strong hops
-- [ ] Core: new framework for hosting multiple virtual nodes on one physical device
-- [ ] V2 protocol spec: discussion and consensus around V2 packet protocol, including path hashes, new encryption specs, etc
-
-## 📞 Get Support
-
-- Report bugs and request features on the [GitHub Issues](https://github.com/ripplebiz/MeshCore/issues) page.
-- Find additional guides and components on [my site](https://buymeacoffee.com/ripplebiz).
-- Join [MeshCore Discord](https://meshcore.gg) to chat with the developers and get help from the community.
+Please include the exact RCC6 hardware revision, firmware release, radio region/settings, and reproduction steps with bug reports. Never post private keys, pairing PINs, channel secrets, or full device backups.
