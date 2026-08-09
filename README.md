@@ -17,6 +17,30 @@ Experimental MeshCore 1.17 companion firmware for the **Heltec RadioCore RCC6** 
 
 The current experimental release is [`v1.2.0-rc.1`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.1). It adds the animated NeonPocketMC startup, Diagnostics, and Quick Reply to both companion modes. Use only files attached to that release; short-lived Actions artifacts are development builds.
 
+## Live interface
+
+These are direct, pixel-for-pixel captures of the 220×128 RGB565 framebuffer running on an RCC6—not mockups. They were captured from a temporary diagnostics build based on this repository's exact [`v1.2.0-rc.1`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.1) source; the capture hook is not included in public firmware.
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/images/rcc6-ui/rcc6-home.png" alt="RCC6 NeonPocketMC Home dashboard" width="440"><br><strong>Home</strong></td>
+    <td align="center"><img src="docs/images/rcc6-ui/rcc6-nearby.png" alt="RCC6 NeonPocketMC Nearby page" width="440"><br><strong>Nearby</strong></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/rcc6-ui/rcc6-radio.png" alt="RCC6 NeonPocketMC Radio statistics" width="440"><br><strong>Radio statistics</strong></td>
+    <td align="center"><img src="docs/images/rcc6-ui/rcc6-advert.png" alt="RCC6 NeonPocketMC Advert action" width="440"><br><strong>Mesh advert</strong></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/rcc6-ui/rcc6-quick-reply.png" alt="RCC6 NeonPocketMC Quick Reply page" width="440"><br><strong>One-button Quick Reply</strong></td>
+    <td align="center"><img src="docs/images/rcc6-ui/rcc6-diagnostics.png" alt="RCC6 NeonPocketMC Diagnostics page" width="440"><br><strong>Diagnostics</strong></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="docs/images/rcc6-ui/rcc6-power.png" alt="RCC6 NeonPocketMC Power confirmation" width="440"><br><strong>Power confirmation</strong></td>
+  </tr>
+</table>
+
+Capture provenance and checksums are recorded in [`docs/images/rcc6-ui/README.md`](docs/images/rcc6-ui/README.md).
+
 ## Firmware choices
 
 The repository builds two separate application images:
