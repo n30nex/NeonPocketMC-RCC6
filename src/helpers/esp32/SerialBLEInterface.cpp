@@ -26,7 +26,8 @@ void SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code
   // Create the BLE Device
   BLEDevice::init(dev_name);
   BLEDevice::setSecurityCallbacks(this);
-  BLEDevice::setMTU(MAX_FRAME_SIZE);
+  // ATT notifications use three bytes of the negotiated MTU for protocol overhead.
+  BLEDevice::setMTU(MAX_FRAME_SIZE + 3);
 
   BLESecurity  sec;
   sec.setStaticPIN(pin_code);
@@ -93,16 +94,19 @@ void SerialBLEInterface::onConnect(BLEServer* pServer) {
 }
 
 void SerialBLEInterface::onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param) {
-  BLE_DEBUG_PRINTLN("onConnect(), conn_id=%d, mtu=%d", param->connect.conn_id, pServer->getPeerMTU(param->connect.conn_id));
+  BLE_DEBUG_PRINTLN("onConnect(), conn_id=%d", param->connect.conn_id);
   last_conn_id = param->connect.conn_id;
+  peer_mtu = 23;
 }
 
 void SerialBLEInterface::onMtuChanged(BLEServer* pServer, esp_ble_gatts_cb_param_t* param) {
-  BLE_DEBUG_PRINTLN("onMtuChanged(), mtu=%d", pServer->getPeerMTU(param->mtu.conn_id));
+  peer_mtu = param->mtu.mtu;
+  BLE_DEBUG_PRINTLN("onMtuChanged(), mtu=%d", peer_mtu);
 }
 
 void SerialBLEInterface::onDisconnect(BLEServer* pServer) {
   BLE_DEBUG_PRINTLN("onDisconnect()");
+  peer_mtu = 23;
   if (_isEnabled) {
     adv_restart_time = millis() + ADVERT_RESTART_DELAY;
 
@@ -157,6 +161,7 @@ void SerialBLEInterface::disable() {
   pServer->disconnect(last_conn_id);
   pService->stop();
   oldDeviceConnected = deviceConnected = false;
+  peer_mtu = 23;
   adv_restart_time = 0;
 }
 
@@ -167,6 +172,11 @@ size_t SerialBLEInterface::writeFrame(const uint8_t src[], size_t len) {
   }
 
   if (deviceConnected && len > 0) {
+    if (peer_mtu < len + 3) {
+      BLE_DEBUG_PRINTLN("writeFrame(), peer MTU too small, mtu=%d, len=%d",
+          peer_mtu, len);
+      return 0;
+    }
     if (send_queue_len >= SERIAL_BLE_FRAME_QUEUE_SIZE) {
       BLE_DEBUG_PRINTLN("writeFrame(), send_queue is full!");
       return 0;
