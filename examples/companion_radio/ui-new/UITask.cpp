@@ -764,6 +764,25 @@ public:
     if (_shutdown_init && !_task->isButtonPressed()) {  // must wait for USR button to be released
       _task->shutdown();
     }
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+    if (_page != HomePage::QUICK_REPLY || _quick_reply_confirm) return;
+
+    const unsigned long now = millis();
+    if (_task->isButtonPressed()) {
+      _quick_reply_pressed = true;
+      return;
+    }
+    if (_quick_reply_pressed) {
+      _quick_reply_pressed = false;
+      _quick_reply_next = now + RCC6_QUICK_REPLY_SCAN_MILLIS;
+      return;
+    }
+    if ((int32_t)(now - _quick_reply_next) >= 0) {
+      _quick_reply_index = (_quick_reply_index + 1) % RCC6_QUICK_REPLY_COUNT;
+      _quick_reply_next = now + RCC6_QUICK_REPLY_SCAN_MILLIS;
+      _task->requestRefresh();
+    }
+#endif
   }
 
   int render(DisplayDriver& display) override {
@@ -995,28 +1014,6 @@ public:
     return 5000;   // next render after 5000 ms
 #endif
   }
-
-#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
-  void poll() override {
-    if (_page != HomePage::QUICK_REPLY || _quick_reply_confirm) return;
-
-    const unsigned long now = millis();
-    if (_task->isButtonPressed()) {
-      _quick_reply_pressed = true;
-      return;
-    }
-    if (_quick_reply_pressed) {
-      _quick_reply_pressed = false;
-      _quick_reply_next = now + RCC6_QUICK_REPLY_SCAN_MILLIS;
-      return;
-    }
-    if ((int32_t)(now - _quick_reply_next) >= 0) {
-      _quick_reply_index = (_quick_reply_index + 1) % RCC6_QUICK_REPLY_COUNT;
-      _quick_reply_next = now + RCC6_QUICK_REPLY_SCAN_MILLIS;
-      _task->requestRefresh();
-    }
-  }
-#endif
 
   bool handleInput(char c) override {
     if (c == KEY_LEFT || c == KEY_PREV) {
