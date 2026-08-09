@@ -47,9 +47,7 @@ class UITask : public AbstractUITask {
   bool _wake_pending = false;
   bool _connection_known = false;
   bool _last_connection = false;
-  bool _menu_open = false;
-  uint8_t _menu_index = 0;
-  unsigned long _menu_started = 0;
+  unsigned long _power_confirm_until = 0;
   char _latest_sender[32] = "";
   char _latest_preview[48] = "";
   bool _radio_rx_pending = false;
@@ -65,11 +63,10 @@ class UITask : public AbstractUITask {
   bool _battery_low_warning = false;
   unsigned long _manual_advert_until = 0;
   DisplayDriver::Color _next_message_color = DisplayDriver::YELLOW;
+  bool _unread_overflow = false;
 
   void startNeonPulse(DisplayDriver::Color color, unsigned long duration_millis = 300);
   bool handleNeonInput(char c);
-  void selectNeonMenuItem();
-  void renderNeonMenu(DisplayDriver& display);
 #endif
   unsigned long ui_started_at, next_batt_chck;
   int next_backlight_btn_check = 0;
@@ -108,6 +105,9 @@ public:
   void begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* node_prefs);
 
   void gotoHomeScreen() { setCurrScreen(home); }
+#ifdef HELTEC_RCC6_NEON_UI
+  void gotoMsgPreviewScreen() { setCurrScreen(msg_preview); }
+#endif
   void showAlert(const char* text, int duration_millis,
       DisplayDriver::Color color = DisplayDriver::LIGHT);
   int  getMsgCount() const { return _msgcount; }
@@ -115,6 +115,10 @@ public:
   const char* getLatestSender() const { return _latest_sender; }
   const char* getLatestPreview() const { return _latest_preview; }
   bool hasLatestPreview() const { return _latest_preview[0] != 0; }
+  bool hasUnreadOverflow() const { return _unread_overflow; }
+  void setLocalUnread(int count, const char* sender = nullptr, const char* preview = nullptr,
+      bool overflow = false);
+  bool isPowerConfirmArmed() const;
   uint16_t getCachedBattMilliVolts() const { return _cached_batt_millivolts; }
   bool hasCachedRadioSample() const { return _radio_sample_known; }
   int16_t getCachedRadioRSSI() const { return _radio_rssi_dbm; }

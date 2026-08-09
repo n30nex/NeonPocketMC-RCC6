@@ -2,6 +2,10 @@
 #include <helpers/TxtDataHelpers.h>
 #include "../MyMesh.h"
 #include "target.h"
+#ifdef RCC6_WEB_AP
+  #include <helpers/esp32/SerialWebInterface.h>
+  extern SerialWebInterface serial_interface;
+#endif
 #ifdef WIFI_SSID
   #include <WiFi.h>
 #endif
@@ -14,22 +18,7 @@
 #ifdef HELTEC_RCC6_NEON_UI
   #define NEON_FRAME_MILLIS       125
   #define NEON_TRANSITION_MILLIS  300
-
-enum NeonMenuItem : uint8_t {
-  NEON_MENU_HOME,
-  NEON_MENU_NEARBY,
-  NEON_MENU_RADIO,
-  NEON_MENU_BLUETOOTH,
-  NEON_MENU_ADVERT,
-  NEON_MENU_SCREEN_OFF,
-  NEON_MENU_POWER,
-  NEON_MENU_COUNT
-};
-
-static const char* const neon_menu_labels[NEON_MENU_COUNT] = {
-  "HOME", "NEARBY", "RADIO", "BLUETOOTH TOGGLE",
-  "ADVERT NOW", "SCREEN OFF", "POWER / SLEEP"
-};
+  #define NEON_POWER_CONFIRM_MILLIS 8000
 #endif
 
 #ifdef PIN_STATUS_LED
@@ -43,6 +32,8 @@ static const char* const neon_menu_labels[NEON_MENU_COUNT] = {
 #ifndef UI_RECENT_LIST_SIZE
   #define UI_RECENT_LIST_SIZE 4
 #endif
+// ponytail: fixed RAM ring; at capacity the UI reports an honest lower bound.
+static constexpr int UI_MAX_UNREAD_MSGS = 32;
 
 #if UI_HAS_JOYSTICK
   #define PRESS_LABEL "press Enter"
@@ -252,7 +243,12 @@ class HomeScreen : public UIScreen {
       case HomePage::FIRST: return "HOME";
       case HomePage::RECENT: return "NEARBY";
       case HomePage::RADIO: return "RADIO";
-      case HomePage::BLUETOOTH: return "BLUETOOTH";
+      case HomePage::BLUETOOTH:
+#ifdef RCC6_WEB_AP
+        return serial_interface.isStationMode() ? "LOCAL WIFI" : "SETUP AP";
+#else
+        return "BLUETOOTH";
+#endif
       case HomePage::ADVERT: return "ADVERTISE";
 #if ENV_INCLUDE_GPS == 1
       case HomePage::GPS: return "GPS";
@@ -266,7 +262,19 @@ class HomeScreen : public UIScreen {
   }
 
   const char* neonActionHint() const {
-    return "CLICK NEXT  HOLD MENU";
+    if (_page == HomePage::SHUTDOWN) {
+      return _task->isPowerConfirmArmed() ? "HOLD AGAIN TO CONFIRM" : "HOLD FOR POWER";
+    }
+    if (_page == HomePage::FIRST && _task->getMsgCount() > 0) return "CLICK NEXT  2X INBOX";
+    if (_page == HomePage::BLUETOOTH) {
+#ifdef RCC6_WEB_AP
+      return serial_interface.isStationMode() ? "CLICK NEXT  2X SETUP AP" : "CLICK NEXT  2X TOGGLE";
+#else
+      return "CLICK NEXT  2X TOGGLE";
+#endif
+    }
+    if (_page == HomePage::ADVERT) return "CLICK NEXT  2X SEND";
+    return "CLICK NEXT";
   }
 
   void renderNeonHeader(DisplayDriver& display) {
@@ -276,15 +284,19 @@ class HomeScreen : public UIScreen {
     display.translateUTF8ToBlocks(filtered_name, _node_prefs->node_name, sizeof(filtered_name));
     display.drawTextEllipsized(4, 1, 130, filtered_name);
 
-    DisplayDriver::Color ble_color = DisplayDriver::RED;
+    DisplayDriver::Color link_color = DisplayDriver::RED;
     if (_task->isSerialEnabled()) {
-      ble_color = _task->hasConnection() ? DisplayDriver::GREEN : DisplayDriver::ORANGE;
+      link_color = _task->hasConnection() ? DisplayDriver::GREEN : DisplayDriver::ORANGE;
     }
-    display.setColor(ble_color);
+    display.setColor(link_color);
     display.fillRect(140, 5, 6, 6);
     display.setColor(DisplayDriver::LIGHT);
     display.setCursor(151, 1);
+#ifdef RCC6_WEB_AP
+    display.print("WIFI");
+#else
     display.print("BLE");
+#endif
     renderBatteryIndicator(display, _task->getCachedBattMilliVolts());
 
     display.setColor(DisplayDriver::BLUE);
@@ -360,14 +372,15 @@ class HomeScreen : public UIScreen {
       display.setColor(DisplayDriver::BLUE);
       display.drawRect(4, 38, display.width() - 8, 40);
       display.setTextSize(1);
-      snprintf(tmp, sizeof(tmp), "%d UNREAD", _task->getMsgCount());
+      snprintf(tmp, sizeof(tmp), "%d%s UNREAD", _task->getMsgCount(),
+          _task->hasUnreadOverflow() ? "+" : "");
       display.setColor(_task->getMsgCount() ? DisplayDriver::YELLOW : DisplayDriver::GREEN);
       display.setCursor(8, 42);
       display.print(tmp);
       if (_task->hasLatestPreview()) {
         char filtered_sender[32];
         display.translateUTF8ToBlocks(filtered_sender, _task->getLatestSender(), sizeof(filtered_sender));
-        display.setColor(DisplayDriver::GREEN);
+        display.setColor(_task->getLatestSender()[0] == '#' ? DisplayDriver::BLUE : DisplayDriver::GREEN);
         display.drawTextEllipsized(88, 42, display.width() - 96, filtered_sender);
         char filtered_preview[48];
         display.translateUTF8ToBlocks(filtered_preview, _task->getLatestPreview(), sizeof(filtered_preview));
@@ -478,6 +491,34 @@ class HomeScreen : public UIScreen {
           (unsigned long)radio_driver.getPacketsRecvErrors(), radio_driver.getNoiseFloor());
       display.drawTextEllipsized(4, 99, display.width() - 8, tmp);
     } else if (_page == HomePage::BLUETOOTH) {
+#ifdef RCC6_WEB_AP
+      const bool enabled = _task->isSerialEnabled();
+      const bool station = serial_interface.isStationMode();
+      display.setTextSize(1);
+      display.setColor(enabled ? DisplayDriver::GREEN : DisplayDriver::RED);
+      display.setCursor(8, 40);
+      display.print(enabled ? (station ? "LOCAL WIFI ON" : "SETUP AP ON") : "NETWORK OFF");
+      display.setColor(_task->hasConnection() ? DisplayDriver::GREEN : DisplayDriver::ORANGE);
+      display.drawTextRightAlign(display.width() - 8, 40,
+          _task->hasConnection() ? "CLIENT READY" : "WAITING");
+
+      display.setColor(DisplayDriver::BLUE);
+      display.drawRect(4, 54, display.width() - 8, 55);
+      display.setColor(DisplayDriver::LIGHT);
+      snprintf(tmp, sizeof(tmp), "SSID %s", serial_interface.getCurrentSsid());
+      display.drawTextEllipsized(8, 59, display.width() - 16, tmp);
+      if (station) {
+        snprintf(tmp, sizeof(tmp), "AUTH meshcore/%s", serial_interface.getApPassword());
+      } else {
+        snprintf(tmp, sizeof(tmp), "PASS %s%s", serial_interface.getApPassword(),
+            serial_interface.isFallbackActive() ? "  FALLBACK" : "");
+      }
+      display.drawTextEllipsized(8, 75, display.width() - 16, tmp);
+      const IPAddress current_ip = serial_interface.getCurrentIP();
+      snprintf(tmp, sizeof(tmp), "OPEN %u.%u.%u.%u", current_ip[0], current_ip[1],
+          current_ip[2], current_ip[3]);
+      display.drawTextEllipsized(8, 91, display.width() - 16, tmp);
+#else
       const bool enabled = _task->isSerialEnabled();
       display.setColor(enabled ? DisplayDriver::GREEN : DisplayDriver::RED);
       display.drawXbm(24, 50, enabled ? bluetooth_on : bluetooth_off, 32, 32);
@@ -496,6 +537,7 @@ class HomeScreen : public UIScreen {
         display.drawTextCentered(146, 86,
             _task->hasConnection() ? "Companion ready" : "Radio only");
       }
+#endif
     } else if (_page == HomePage::ADVERT) {
       display.setColor(DisplayDriver::GREEN);
       display.drawXbm(24, 50, advert_icon, 32, 32);
@@ -506,7 +548,7 @@ class HomeScreen : public UIScreen {
       display.setColor(DisplayDriver::LIGHT);
       display.drawTextCentered(146, 70, "Announce this node");
       display.setColor(DisplayDriver::BLUE);
-      display.drawTextCentered(146, 90, "Use quick menu");
+      display.drawTextCentered(146, 90, "Double to send");
 #if ENV_INCLUDE_GPS == 1
     } else if (_page == HomePage::GPS) {
       LocationProvider* nmea = _sensors->getLocationProvider();
@@ -547,9 +589,10 @@ class HomeScreen : public UIScreen {
         display.drawTextCentered(146, 40, "POWER OFF");
         display.setTextSize(1);
         display.setColor(DisplayDriver::LIGHT);
-        display.drawTextCentered(146, 72, "Sleep until reset");
+        display.drawTextCentered(146, 72,
+            _task->isPowerConfirmArmed() ? "Hold again" : "Hold button");
         display.setColor(DisplayDriver::RED);
-        display.drawTextCentered(146, 91, "Use quick menu");
+        display.drawTextCentered(146, 91, "to power off");
       }
     }
 
@@ -562,18 +605,20 @@ class HomeScreen : public UIScreen {
 
 public:
 #ifdef HELTEC_RCC6_NEON_UI
-  void neonGotoPage(uint8_t page) {
-    if (page >= HomePage::Count) return;
-    _page = page;
+  void neonRequestShutdown() {
+    _page = HomePage::SHUTDOWN;
+    _shutdown_init = true;
+  }
+
+  void neonShowPowerConfirm() {
+    _page = HomePage::SHUTDOWN;
+    _shutdown_init = false;
     _transition_dir = 1;
     _transition_started = 0;
     _transition_pending = true;
   }
 
-  void neonRequestShutdown() {
-    _page = HomePage::SHUTDOWN;
-    _shutdown_init = true;
-  }
+  bool neonIsPowerPage() const { return _page == HomePage::SHUTDOWN; }
 #endif
 
   HomeScreen(UITask* task, mesh::RTCClock* rtc, SensorManager* sensors, NodePrefs* node_prefs)
@@ -834,38 +879,64 @@ public:
       _transition_pending = true;
 #endif
       if (_page == HomePage::RECENT) {
-#ifdef HELTEC_RCC6_NEON_UI
-        _task->showAlert("Nearby nodes", 800, DisplayDriver::BLUE);
-#else
+#ifndef HELTEC_RCC6_NEON_UI
         _task->showAlert("Recent adverts", 800);
 #endif
       }
       return true;
     }
+#ifdef HELTEC_RCC6_NEON_UI
+    if (c == KEY_ENTER && _page == HomePage::FIRST && _task->getMsgCount() > 0) {
+      _task->gotoMsgPreviewScreen();
+      return true;
+    }
+#endif
     if (c == KEY_ENTER && _page == HomePage::BLUETOOTH) {
-      if (_task->isSerialEnabled()) {  // toggle Bluetooth on/off
+#ifdef RCC6_WEB_AP
+      if (serial_interface.isStationMode()) {
+        const bool saved = serial_interface.selectSetupAp();
+#ifdef HELTEC_RCC6_NEON_UI
+        _task->showAlert(saved ? "Restarting setup AP" : "Setup AP save failed", 1000,
+            saved ? DisplayDriver::ORANGE : DisplayDriver::RED);
+#endif
+        return true;
+      }
+#endif
+      if (_task->isSerialEnabled()) {
         _task->disableSerial();
       } else {
         _task->enableSerial();
       }
 #ifdef HELTEC_RCC6_NEON_UI
+#ifdef RCC6_WEB_AP
+      _task->showAlert(_task->isSerialEnabled() ? "Setup AP on" : "Setup AP off", 800,
+          _task->isSerialEnabled() ? DisplayDriver::GREEN : DisplayDriver::ORANGE);
+#else
       _task->showAlert(_task->isSerialEnabled() ? "Bluetooth on" : "Bluetooth off", 800,
           _task->isSerialEnabled() ? DisplayDriver::GREEN : DisplayDriver::ORANGE);
+#endif
 #endif
       return true;
     }
     if (c == KEY_ENTER && _page == HomePage::ADVERT) {
+#ifdef HELTEC_RCC6_NEON_UI
+      const bool advert_queued = the_mesh.advert(true);
+#else
       _task->notify(UIEventType::ack);
-      if (the_mesh.advert()) {
+      const bool advert_queued = the_mesh.advert();
+#endif
+      if (advert_queued) {
 #ifdef HELTEC_RCC6_NEON_UI
         _task->armManualAdvert();
-        _task->showAlert("Advert queued", 1000, DisplayDriver::YELLOW);
+        _task->showAlert("Mesh advert queued", 1000, DisplayDriver::YELLOW);
 #else
         _task->showAlert("Advert sent!", 1000);
 #endif
       } else {
 #ifdef HELTEC_RCC6_NEON_UI
-        _task->showAlert("Advert failed", 1000, DisplayDriver::RED);
+        const bool busy = the_mesh.isAdvertPending();
+        _task->showAlert(busy ? "Advert already queued" : "Advert failed", 1000,
+            busy ? DisplayDriver::ORANGE : DisplayDriver::RED);
 #else
         _task->showAlert("Advert failed..", 1000);
 #endif
@@ -886,7 +957,12 @@ public:
     }
 #endif
     if (c == KEY_ENTER && _page == HomePage::SHUTDOWN) {
+#ifdef HELTEC_RCC6_NEON_UI
+      _task->showAlert(_task->isPowerConfirmArmed() ? "Hold again to confirm" : "Hold to power off",
+          900, DisplayDriver::RED);
+#else
       _shutdown_init = true;  // need to wait for button to be released
+#endif
       return true;
     }
     return false;
@@ -899,30 +975,101 @@ class MsgPreviewScreen : public UIScreen {
 
   struct MsgEntry {
     uint32_t timestamp;
-    char origin[62];
+    uint8_t path_len;
+    char source[32];
+#ifdef HELTEC_RCC6_NEON_UI
+    char msg[MAX_FRAME_SIZE];
+#else
     char msg[78];
+#endif
   };
-  #define MAX_UNREAD_MSGS   32
   int num_unread;
-  int head = MAX_UNREAD_MSGS - 1; // index of latest unread message
-  MsgEntry unread[MAX_UNREAD_MSGS];
+  int head = UI_MAX_UNREAD_MSGS - 1; // index of latest unread message
+  MsgEntry unread[UI_MAX_UNREAD_MSGS];
+#ifdef HELTEC_RCC6_NEON_UI
+  bool overflowed = false;
+  int page_head = -1;
+  size_t page_offset = 0;
+  size_t next_page_offset = 0;
+  bool page_has_more = false;
+
+  size_t renderMessagePage(DisplayDriver& display, const char* text, size_t offset) {
+    static constexpr size_t chars_per_line = 33;
+    static constexpr int lines_per_page = 7;
+    const size_t text_len = strlen(text);
+    size_t pos = offset > text_len ? 0 : offset;
+
+    for (int line_num = 0; line_num < lines_per_page && pos < text_len; line_num++) {
+      while (pos < text_len && (text[pos] == ' ' || text[pos] == '\t' || text[pos] == '\r')) pos++;
+      if (pos >= text_len) break;
+      if (text[pos] == '\n') {
+        pos++;
+        continue;
+      }
+
+      const size_t line_start = pos;
+      size_t line_end = line_start;
+      while (line_end < text_len && line_end - line_start < chars_per_line &&
+          text[line_end] != '\n' && text[line_end] != '\r') line_end++;
+
+      size_t next = line_end;
+      if (line_end < text_len && text[line_end] != '\n' && text[line_end] != '\r') {
+        size_t split = line_end;
+        while (split > line_start && text[split - 1] != ' ' && text[split - 1] != '\t') split--;
+        if (split > line_start) {
+          line_end = split - 1;
+          while (line_end > line_start &&
+              (text[line_end - 1] == ' ' || text[line_end - 1] == '\t')) line_end--;
+          next = split;
+        }
+      } else if (line_end < text_len) {
+        next = line_end + 1;
+      }
+
+      char line[chars_per_line + 1];
+      const size_t line_len = line_end - line_start;
+      memcpy(line, text + line_start, line_len);
+      line[line_len] = 0;
+      display.setCursor(10, 49 + line_num * 8);
+      display.print(line);
+      pos = next;
+    }
+    return pos;
+  }
+#endif
+
+  void formatOrigin(char* dest, size_t dest_size, const MsgEntry& entry) const {
+    if (entry.path_len == 0xFF) {
+      snprintf(dest, dest_size, "(D) %s:", entry.source);
+    } else {
+      snprintf(dest, dest_size, "(%u) %s:", (unsigned)entry.path_len, entry.source);
+    }
+  }
 
 public:
   MsgPreviewScreen(UITask* task, mesh::RTCClock* rtc) : _task(task), _rtc(rtc) { num_unread = 0; }
 
-  void addPreview(uint8_t path_len, const char* from_name, const char* msg) {
-    head = (head + 1) % MAX_UNREAD_MSGS;
-    if (num_unread < MAX_UNREAD_MSGS) num_unread++;
+  int addPreview(uint8_t path_len, const char* from_name, const char* msg) {
+    head = (head + 1) % UI_MAX_UNREAD_MSGS;
+    if (num_unread < UI_MAX_UNREAD_MSGS) {
+      num_unread++;
+#ifdef HELTEC_RCC6_NEON_UI
+    } else {
+      overflowed = true;
+#endif
+    }
 
     auto p = &unread[head];
     p->timestamp = _rtc->getCurrentTime();
-    if (path_len == 0xFF) {
-      sprintf(p->origin, "(D) %s:", from_name);
-    } else {
-      sprintf(p->origin, "(%d) %s:", (uint32_t) path_len, from_name);
-    }
+    p->path_len = path_len;
+    StrHelper::strncpy(p->source, from_name, sizeof(p->source));
     StrHelper::strncpy(p->msg, msg, sizeof(p->msg));
+    return num_unread;
   }
+
+#ifdef HELTEC_RCC6_NEON_UI
+  bool hasOverflowed() const { return overflowed; }
+#endif
 
   int render(DisplayDriver& display) override {
 #ifdef HELTEC_RCC6_NEON_UI
@@ -944,15 +1091,17 @@ public:
     display.print("INBOX");
     display.setColor(DisplayDriver::YELLOW);
     char count[20];
-    snprintf(count, sizeof(count), "%d unread", num_unread);
+    snprintf(count, sizeof(count), "%d%s unread", num_unread, overflowed ? "+" : "");
     display.drawTextCentered(display.width() / 2, 1, count);
     display.setColor(DisplayDriver::LIGHT);
     display.drawTextRightAlign(display.width() - 4, 1, tmp);
     display.setColor(DisplayDriver::BLUE);
     display.fillRect(0, 17, display.width(), 2);
 
-    char filtered_origin[sizeof(p->origin)];
-    display.translateUTF8ToBlocks(filtered_origin, p->origin, sizeof(filtered_origin));
+    char origin[48];
+    formatOrigin(origin, sizeof(origin), *p);
+    char filtered_origin[sizeof(origin)];
+    display.translateUTF8ToBlocks(filtered_origin, origin, sizeof(filtered_origin));
     display.setColor(DisplayDriver::YELLOW);
     display.drawTextEllipsized(5, 23, display.width() - 10, filtered_origin);
 
@@ -962,12 +1111,17 @@ public:
     display.setColor(DisplayDriver::LIGHT);
     char filtered_msg[sizeof(p->msg)];
     display.translateUTF8ToBlocks(filtered_msg, p->msg, sizeof(filtered_msg));
-    display.printWordWrap(filtered_msg, display.width() - 20);
+    if (page_head != head) {
+      page_head = head;
+      page_offset = 0;
+    }
+    next_page_offset = renderMessagePage(display, filtered_msg, page_offset);
+    page_has_more = filtered_msg[next_page_offset] != 0;
 
     display.setColor(DisplayDriver::BLUE);
     display.setCursor(4, 113);
-    display.print("CLICK NEXT");
-    display.drawTextRightAlign(display.width() - 4, 113, "HOLD MENU");
+    display.print(page_has_more ? "CLICK MORE" : "CLICK NEXT");
+    display.drawTextRightAlign(display.width() - 4, 113, "2X CLEAR ALL");
     return 1000;
 #else
     char tmp[16];
@@ -994,8 +1148,10 @@ public:
 
     display.setCursor(0, 14);
     display.setColor(DisplayDriver::YELLOW);
-    char filtered_origin[sizeof(p->origin)];
-    display.translateUTF8ToBlocks(filtered_origin, p->origin, sizeof(filtered_origin));
+    char origin[48];
+    formatOrigin(origin, sizeof(origin), *p);
+    char filtered_origin[sizeof(origin)];
+    display.translateUTF8ToBlocks(filtered_origin, origin, sizeof(filtered_origin));
     display.print(filtered_origin);
 
     display.setCursor(0, 25);
@@ -1014,8 +1170,26 @@ public:
 
   bool handleInput(char c) override {
     if (c == KEY_NEXT || c == KEY_RIGHT) {
-      head = (head + MAX_UNREAD_MSGS - 1) % MAX_UNREAD_MSGS;
+#ifdef HELTEC_RCC6_NEON_UI
+      if (page_has_more) {
+        page_offset = next_page_offset;
+        return true;
+      }
+      page_offset = next_page_offset = 0;
+      page_head = -1;
+      page_has_more = false;
+#endif
+      head = (head + UI_MAX_UNREAD_MSGS - 1) % UI_MAX_UNREAD_MSGS;
       num_unread--;
+#ifdef HELTEC_RCC6_NEON_UI
+      if (num_unread > 0) {
+        const auto p = &unread[head];
+        _task->setLocalUnread(num_unread, p->source, p->msg, overflowed);
+      } else {
+        overflowed = false;
+        _task->setLocalUnread(0);
+      }
+#endif
       if (num_unread == 0) {
         _task->gotoHomeScreen();
       }
@@ -1023,6 +1197,13 @@ public:
     }
     if (c == KEY_ENTER) {
       num_unread = 0;  // clear unread queue
+#ifdef HELTEC_RCC6_NEON_UI
+      overflowed = false;
+      page_offset = next_page_offset = 0;
+      page_head = -1;
+      page_has_more = false;
+      _task->setLocalUnread(0);
+#endif
       _task->gotoHomeScreen();
       return true;
     }
@@ -1123,103 +1304,31 @@ void UITask::startNeonPulse(DisplayDriver::Color color, unsigned long duration_m
   _next_refresh = 0;
 }
 
-bool UITask::handleNeonInput(char c) {
-  if (!_menu_open) {
-    if (c != KEY_ENTER) return false;
-    _menu_open = true;
-    _menu_index = 0;
-    _menu_started = millis();
-    startNeonPulse(DisplayDriver::BLUE, NEON_TRANSITION_MILLIS);
-    return true;
-  }
-
-  if (c == KEY_NEXT || c == KEY_RIGHT) {
-    _menu_index = (_menu_index + 1) % NEON_MENU_COUNT;
-    _next_refresh = 0;
-    return true;
-  }
-  if (c == KEY_PREV || c == KEY_LEFT) {
-    _menu_open = false;
-    _next_refresh = 0;
-    return true;
-  }
-  if (c == KEY_ENTER) {
-    selectNeonMenuItem();
-    return true;
-  }
-  return true;
+bool UITask::isPowerConfirmArmed() const {
+  return _power_confirm_until != 0 &&
+      (int32_t)(_power_confirm_until - millis()) >= 0;
 }
 
-void UITask::selectNeonMenuItem() {
-  const uint8_t item = _menu_index;
-  _menu_open = false;
+bool UITask::handleNeonInput(char c) {
+  if (c != KEY_ENTER) {
+    _power_confirm_until = 0;
+    return false;
+  }
 
-  if (item == NEON_MENU_HOME || item == NEON_MENU_NEARBY || item == NEON_MENU_RADIO) {
-    gotoHomeScreen();
-    static_cast<HomeScreen*>(home)->neonGotoPage(item);
-  } else if (item == NEON_MENU_BLUETOOTH) {
-    if (isSerialEnabled()) disableSerial();
-    else enableSerial();
-    showAlert(isSerialEnabled() ? "Bluetooth on" : "Bluetooth off", 900,
-        isSerialEnabled() ? DisplayDriver::GREEN : DisplayDriver::ORANGE);
-  } else if (item == NEON_MENU_ADVERT) {
-    notify(UIEventType::ack);
-    if (the_mesh.advert()) {
-      armManualAdvert();
-      showAlert("Advert queued", 1000, DisplayDriver::YELLOW);
-    } else {
-      showAlert("Advert failed", 1000, DisplayDriver::RED);
-    }
-  } else if (item == NEON_MENU_SCREEN_OFF) {
-    if (_display != NULL && _display->isOn()) _display->turnOff();
-  } else if (item == NEON_MENU_POWER) {
+  const bool can_confirm = isPowerConfirmArmed() && _display != NULL && _display->isOn() &&
+      curr == home && static_cast<HomeScreen*>(home)->neonIsPowerPage();
+  if (can_confirm) {
+    _power_confirm_until = 0;
     gotoHomeScreen();
     static_cast<HomeScreen*>(home)->neonRequestShutdown();
+  } else {
+    _power_confirm_until = millis() + NEON_POWER_CONFIRM_MILLIS;
+    gotoHomeScreen();
+    static_cast<HomeScreen*>(home)->neonShowPowerConfirm();
+    startNeonPulse(DisplayDriver::RED, NEON_TRANSITION_MILLIS);
   }
   _next_refresh = 0;
-}
-
-void UITask::renderNeonMenu(DisplayDriver& display) {
-  const int x = 12;
-  const int y = 8;
-  const int w = display.width() - 24;
-  const int h = 112;
-
-  display.setColor(DisplayDriver::DARK);
-  display.fillRect(x, y, w, h);
-  display.setColor(DisplayDriver::BLUE);
-  display.drawRect(x, y, w, h);
-  display.setTextSize(1);
-  display.setColor(DisplayDriver::GREEN);
-  display.setCursor(x + 6, y + 5);
-  display.print("QUICK MENU");
-  char count[8];
-  snprintf(count, sizeof(count), "%u/%u", (unsigned)_menu_index + 1,
-      (unsigned)NEON_MENU_COUNT);
-  display.setColor(DisplayDriver::LIGHT);
-  display.drawTextRightAlign(x + w - 6, y + 5, count);
-  display.setColor(DisplayDriver::BLUE);
-  display.fillRect(x + 5, y + 21, w - 10, 1);
-
-  int first = _menu_index == 0 ? 0 : _menu_index - 1;
-  if (first > NEON_MENU_COUNT - 3) first = NEON_MENU_COUNT - 3;
-  for (int row = 0; row < 3; row++) {
-    const int item = first + row;
-    const int row_y = y + 27 + row * 20;
-    if (item == _menu_index) {
-      display.setColor(item == NEON_MENU_POWER ? DisplayDriver::RED : DisplayDriver::BLUE);
-      display.fillRect(x + 5, row_y - 2, w - 10, 18);
-      display.setColor(DisplayDriver::LIGHT);
-    } else {
-      display.setColor(item == NEON_MENU_POWER ? DisplayDriver::RED : DisplayDriver::GREEN);
-    }
-    display.setCursor(x + 11, row_y);
-    display.print(neon_menu_labels[item]);
-  }
-
-  display.setColor(DisplayDriver::BLUE);
-  display.fillRect(x + 5, y + 88, w - 10, 1);
-  display.drawTextCentered(display.width() / 2, y + 94, "CLICK MOVE  HOLD SELECT");
+  return true;
 }
 #endif
 
@@ -1285,27 +1394,50 @@ void UITask::onRadioEvent(UIRadioEvent event, uint8_t payload_type,
 #endif
 
 void UITask::msgRead(int msgcount) {
+#ifdef HELTEC_RCC6_NEON_UI
+  // Companion sync means "delivered to the phone", not "read by the user".
+  // Keep the on-device unread count until it is acknowledged on the display.
+  (void) msgcount;
+#else
   _msgcount = msgcount;
   if (msgcount == 0) {
-#ifdef HELTEC_RCC6_NEON_UI
-    _latest_sender[0] = 0;
-    _latest_preview[0] = 0;
-#endif
     gotoHomeScreen();
   }
+#endif
 }
 
 #ifdef HELTEC_RCC6_NEON_UI
+void UITask::setLocalUnread(int count, const char* sender, const char* preview, bool overflow) {
+  _msgcount = count;
+  _unread_overflow = overflow;
+  if (count == 0) {
+    _latest_sender[0] = 0;
+    _latest_preview[0] = 0;
+  } else if (sender != nullptr && preview != nullptr) {
+    StrHelper::strncpy(_latest_sender, sender, sizeof(_latest_sender));
+    StrHelper::strncpy(_latest_preview, preview, sizeof(_latest_preview));
+  }
+  _next_refresh = 0;
+}
+
 void UITask::newMsgWithEvent(uint8_t path_len, const char* from_name, const char* text,
     int msgcount, UIEventType type) {
-  _next_message_color = (type == UIEventType::channelMessage || type == UIEventType::roomMessage)
-      ? DisplayDriver::BLUE : DisplayDriver::YELLOW;
-  newMsg(path_len, from_name, text, msgcount);
+  const bool is_channel = type == UIEventType::channelMessage || type == UIEventType::roomMessage;
+  _next_message_color = is_channel ? DisplayDriver::BLUE : DisplayDriver::YELLOW;
+  if (is_channel && from_name[0] != '#') {
+    char channel_label[sizeof(_latest_sender)];
+    snprintf(channel_label, sizeof(channel_label), "#%s", from_name);
+    newMsg(path_len, channel_label, text, msgcount);
+  } else {
+    newMsg(path_len, from_name, text, msgcount);
+  }
 }
 #endif
 
 void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount) {
+#ifndef HELTEC_RCC6_NEON_UI
   _msgcount = msgcount;
+#endif
 
 #ifdef HELTEC_RCC6_NEON_UI
   StrHelper::strncpy(_latest_sender, from_name, sizeof(_latest_sender));
@@ -1315,7 +1447,11 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
   startNeonPulse(message_color);
 #endif
 
-  ((MsgPreviewScreen *) msg_preview)->addPreview(path_len, from_name, text);
+  const int local_unread = ((MsgPreviewScreen *) msg_preview)->addPreview(path_len, from_name, text);
+#ifdef HELTEC_RCC6_NEON_UI
+  _msgcount = local_unread;
+  _unread_overflow = ((MsgPreviewScreen *) msg_preview)->hasOverflowed();
+#endif
   setCurrScreen(msg_preview);
 
   if (_display != NULL) {
@@ -1395,6 +1531,10 @@ void UITask::loop() {
   char c = 0;
 #ifdef HELTEC_RCC6_NEON_UI
   const unsigned long event_now = millis();
+  if (_power_confirm_until != 0 && (int32_t)(event_now - _power_confirm_until) >= 0) {
+    _power_confirm_until = 0;
+    _next_refresh = 0;
+  }
   if (_wake_pending && _display != NULL) {
     _wake_pending = false;
     if (!_display->isOn()) _display->turnOn();
@@ -1443,7 +1583,7 @@ void UITask::loop() {
           (int32_t)(_manual_advert_until - event_now) >= 0;
       _manual_advert_until = 0;
       if (armed) {
-        showAlert(ok ? "Advert transmitted" : "Advert failed", 1000,
+        showAlert(ok ? "Mesh advert sent" : "Advert failed", 1000,
             ok ? DisplayDriver::GREEN : DisplayDriver::RED);
       }
     }
@@ -1454,7 +1594,11 @@ void UITask::loop() {
     _last_connection = connected;
   } else if (connected != _last_connection) {
     _last_connection = connected;
+#ifdef RCC6_WEB_AP
+    showAlert(connected ? "Network client" : "Client disconnected", 900,
+#else
     showAlert(connected ? "Phone connected" : "Phone disconnected", 900,
+#endif
         connected ? DisplayDriver::GREEN : DisplayDriver::RED);
   }
 #endif
@@ -1557,8 +1701,6 @@ void UITask::loop() {
       const bool alert_active = now < _alert_expiry;
       const bool alert_animating = alert_active && now - _alert_started < 300;
       const bool pulse_active = now < _pulse_until;
-      const bool menu_animating = _menu_open && now - _menu_started < NEON_TRANSITION_MILLIS;
-      if (_menu_open) renderNeonMenu(*_display);
       if (alert_active) {
         const unsigned long elapsed = now - _alert_started;
         const int slide = elapsed >= 300 ? 0 : (int)((300 - elapsed) * 16 / 300);
@@ -1575,7 +1717,7 @@ void UITask::loop() {
         _display->fillRect(0, 0, _display->width(), 3);
         _display->fillRect(0, _display->height() - 3, _display->width(), 3);
       }
-      if (alert_animating || pulse_active || menu_animating) {
+      if (alert_animating || pulse_active) {
         _next_refresh = now + NEON_FRAME_MILLIS;
       } else if (alert_active) {
         const unsigned long page_refresh = now + delay_millis;
@@ -1611,7 +1753,10 @@ void UITask::loop() {
       _auto_off = millis() + AUTO_OFF_MILLIS;
     }
 #endif
-    if (millis() > _auto_off) {
+    if ((int32_t)(millis() - _auto_off) >= 0) {
+#ifdef HELTEC_RCC6_NEON_UI
+      _power_confirm_until = 0;
+#endif
       _display->turnOff();
     }
 #endif
@@ -1692,7 +1837,10 @@ char UITask::handleLongPress(char c) {
 char UITask::handleDoubleClick(char c) {
   MESH_DEBUG_PRINTLN("UITask: double-click triggered");
 #ifdef HELTEC_RCC6_NEON_UI
-  return checkDisplayOn(c);
+  _power_confirm_until = 0;
+  c = checkDisplayOn(KEY_ENTER);
+  if (c != 0 && curr) curr->handleInput(c);
+  return 0;
 #else
   checkDisplayOn(c);
   return c;

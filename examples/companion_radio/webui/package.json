@@ -1,0 +1,16 @@
+{
+  "name": "rcc6-meshcore-webui",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node build.mjs && node verify.mjs"
+  },
+  "dependencies": {
+    "@liamcottle/meshcore.js": "1.14.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.27.2"
+  }
+}

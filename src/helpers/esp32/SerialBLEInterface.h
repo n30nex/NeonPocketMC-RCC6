@@ -16,6 +16,7 @@ class SerialBLEInterface : public BaseSerialInterface, BLESecurityCallbacks, BLE
   bool oldDeviceConnected;
   bool _isEnabled;
   uint16_t last_conn_id;
+  uint16_t peer_mtu;
   uint32_t _pin_code;
   unsigned long _last_write;
   unsigned long adv_restart_time;
@@ -66,6 +67,7 @@ public:
     _isEnabled = false;
     _last_write = 0;
     last_conn_id = 0;
+    peer_mtu = 23;
     recv_queue = xQueueCreateStatic(SERIAL_BLE_FRAME_QUEUE_SIZE, sizeof(Frame), recv_queue_storage, &recv_queue_struct);
     send_queue_len = 0;
   }

@@ -35,7 +35,13 @@ static uint32_t _atoi(const char* sp) {
 #endif
 
 #ifdef ESP32
-  #ifdef WIFI_SSID
+  #ifdef RCC6_WEB_AP
+    #include <helpers/esp32/SerialWebInterface.h>
+    SerialWebInterface serial_interface;
+    #ifndef TCP_PORT
+      #define TCP_PORT 5000
+    #endif
+  #elif defined(WIFI_SSID)
     #include <helpers/esp32/SerialWifiInterface.h>
     SerialWifiInterface serial_interface;
     #ifndef TCP_PORT
@@ -105,7 +111,9 @@ MyMesh the_mesh(radio_driver, fast_rng, rtc_clock, tables, store
 /* END GLOBAL OBJECTS */
 
 void halt() {
-  while (1) ;
+  while (1) {
+    delay(1000);
+  }
 }
 
 /* WIFI RECONNECT TRACKERS */
@@ -135,7 +143,21 @@ void setup() {
   }
 #endif
 
-  if (!radio_init()) { halt(); }
+  if (!radio_init()) {
+    Serial.println("ERROR: radio initialization failed");
+#ifdef DISPLAY_CLASS
+    if (disp != NULL) {
+      disp->startFrame();
+      disp->setTextSize(1);
+      disp->setColor(DisplayDriver::RED);
+      disp->drawTextCentered(disp->width() / 2, disp->height() / 2 - 10, "RADIO INIT FAILED");
+      disp->setColor(DisplayDriver::LIGHT);
+      disp->drawTextCentered(disp->width() / 2, disp->height() / 2 + 8, "Reset device");
+      disp->endFrame();
+    }
+#endif
+    halt();
+  }
 
   fast_rng.begin(radio_driver.getRngSeed());
 
@@ -208,7 +230,25 @@ void setup() {
   #endif
     the_mesh.startInterface(serial_interface);
 #elif defined(ESP32)
+#ifdef HELTEC_RCC6_NEON_UI
+  if (!SPIFFS.begin(false)) {
+    Serial.println("ERROR: SPIFFS mount failed; settings were not formatted");
+#ifdef DISPLAY_CLASS
+    if (disp != NULL) {
+      disp->startFrame();
+      disp->setTextSize(1);
+      disp->setColor(DisplayDriver::RED);
+      disp->drawTextCentered(disp->width() / 2, disp->height() / 2 - 10, "STORAGE ERROR");
+      disp->setColor(DisplayDriver::LIGHT);
+      disp->drawTextCentered(disp->width() / 2, disp->height() / 2 + 8, "Settings preserved");
+      disp->endFrame();
+    }
+#endif
+    halt();
+  }
+#else
   SPIFFS.begin(true);
+#endif
   store.begin();
   the_mesh.begin(
     #ifdef DISPLAY_CLASS
@@ -218,7 +258,10 @@ void setup() {
     #endif
   );
 
-#ifdef WIFI_SSID
+#ifdef RCC6_WEB_AP
+  board.setInhibitSleep(true);   // prevent sleep while the access point is active
+  serial_interface.begin(the_mesh.getNodePrefs()->node_name, TCP_PORT);
+#elif defined(WIFI_SSID)
   board.setInhibitSleep(true);   // prevent sleep when WiFi is active
   WiFi.setAutoReconnect(true);
 
