@@ -6,7 +6,8 @@ MeshCore Companion Bluetooth firmware for the **Heltec RadioCore RCC6** with its
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](license.txt)
 [![Target: ESP32-C6](https://img.shields.io/badge/target-ESP32--C6-00bcd4)](#supported-hardware)
 
-> **1.0 RC1 is a release candidate.** Display, USB stability, BLE advertising, secure PIN pairing, companion synchronization, disconnect/re-advertise, and reconnect were validated on physical RCC6 hardware. End-to-end LoRa field qualification and every notification-failure path remain RC work.
+> [!WARNING]
+> **1.0 RC1 downloads are temporarily withdrawn.** Two independent users reported a boot loop or blank device after flashing the published RC1 files. Do not flash RC1 while the recovery path and exact replacement candidate are being requalified. If you already flashed it, do not erase the device or overwrite SPIFFS; put the RCC6 into download mode and open an issue with the file used, flash offset, hardware revision, and boot log if available.
 
 ## On-device UI
 
@@ -62,45 +63,9 @@ Wait at least eight seconds after boot before using Hold; the early-boot hold re
 
 Attach a suitable antenna before transmitting. For battery use, use a protected single-cell 3.7 V Li-ion/LiPo pack and verify that the pack permits the board's configured charging current before charging it from USB.
 
-## Download 1.0 RC1
+## RC1 safety hold
 
-Download assets from the [1.0 RC1 release](https://github.com/n30nex/RadioCore2-RCC6/releases/tag/v1.0.0-rc.1).
-
-| File | Use | Flash offset | Settings |
-|---|---|---:|---|
-| `RadioCore2-RCC6-1.0-RC1-app.bin` | Recommended update for an already provisioned RCC6 | `0x10000` | Preserved |
-| `RadioCore2-RCC6-1.0-RC1-full-recovery-preserves-meshcore-settings.bin` | Complete bootloader/partition/app recovery image | `0x0` | MeshCore preserved; BLE bond reset |
-| `RadioCore2-RCC6-1.0-RC1-third-party-licenses.zip` | Third-party license texts and exact source/relinking pointers | — | — |
-| `SHA256SUMS.txt` | Release integrity checks | — | — |
-
-### Recommended: settings-preserving update
-
-Install the current [Espressif esptool](https://docs.espressif.com/projects/esptool/en/latest/esp32c6/):
-
-```shell
-python -m pip install --upgrade esptool
-```
-
-Replace `COM21` with your RCC6 port:
-
-```shell
-esptool --chip esp32c6 --port COM21 write-flash 0x10000 RadioCore2-RCC6-1.0-RC1-app.bin
-esptool --chip esp32c6 --port COM21 verify-flash 0x10000 RadioCore2-RCC6-1.0-RC1-app.bin
-```
-
-This writes only the application partition. It does not erase the existing node identity, contacts, channels, pairing PIN, or other persisted settings.
-
-### Full recovery
-
-> [!WARNING]
-> The full-recovery image overwrites the bootloader, partition table, NVS, OTA metadata, and application range. It resets BLE bonds, but it does **not** erase the SPIFFS partition that stores MeshCore identity, contacts, channels, pairing PIN, and preferences. Forget the old phone bond after recovery, then pair again using the PIN currently shown on the TFT. This is not a factory-reset image.
-
-```shell
-esptool --chip esp32c6 --port COM21 write-flash 0x0 RadioCore2-RCC6-1.0-RC1-full-recovery-preserves-meshcore-settings.bin
-esptool --chip esp32c6 --port COM21 verify-flash 0x0 RadioCore2-RCC6-1.0-RC1-full-recovery-preserves-meshcore-settings.bin
-```
-
-Do not add `erase-flash` or `--erase-all` to the app-only update.
+The RC1 release is unpublished while the reported startup failure is reproduced and a replacement is tested on the exact RCC6 hardware. There is currently no endorsed public binary in this repository. Source remains available for review, but building it yourself does not make the result a qualified release.
 
 ## Build from source
 
