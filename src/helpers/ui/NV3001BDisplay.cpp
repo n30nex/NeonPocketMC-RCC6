@@ -1,5 +1,6 @@
 #include "NV3001BDisplay.h"
 #include <Arduino.h>
+#include <stdlib.h>
 #include <string.h>
 
 #if NV3001B_USE_FAST_GPIO
@@ -317,6 +318,70 @@ void NV3001BDisplay::writeColor(uint16_t rgb, uint32_t count) {
   endTransfer();
 }
 
+#if NV3001B_USE_FRAMEBUFFER
+static uint64_t hashFramebufferPixels(const uint16_t* pixels, size_t count) {
+  uint64_t hash = 0xcbf29ce484222325ULL;
+  while (count--) {
+    const uint16_t pixel = *pixels++;
+    hash ^= pixel >> 8;
+    hash *= 0x100000001b3ULL;
+    hash ^= pixel & 0xff;
+    hash *= 0x100000001b3ULL;
+  }
+  return hash;
+}
+
+void NV3001BDisplay::flushFramebuffer() {
+  if (!framebuffer || !is_on) return;
+
+  static bool first_flush = true;
+  static bool first_delta_flush = true;
+  const bool log_flush = first_flush || (framebuffer_hashes_valid && first_delta_flush);
+  const uint32_t flush_started = log_flush ? micros() : 0;
+  const bool force_full = !framebuffer_hashes_valid || framebuffer_flushes_since_full == 255;
+  const uint16_t band_count =
+      (NV3001B_SCREEN_HEIGHT + framebuffer_band_rows - 1) / framebuffer_band_rows;
+  uint16_t bands_sent = 0;
+
+  for (uint16_t band = 0, y = 0; y < NV3001B_SCREEN_HEIGHT; band++, y += framebuffer_band_rows) {
+    const uint16_t rows = y + framebuffer_band_rows <= NV3001B_SCREEN_HEIGHT
+        ? framebuffer_band_rows : NV3001B_SCREEN_HEIGHT - y;
+    const size_t first = (size_t)y * NV3001B_SCREEN_WIDTH;
+    const size_t count = (size_t)rows * NV3001B_SCREEN_WIDTH;
+    const uint64_t hash = hashFramebufferPixels(framebuffer + first, count);
+    if (!force_full && hash == framebuffer_band_hashes[band]) continue;
+
+    setAddrWindow(0, y, NV3001B_SCREEN_WIDTH, rows);
+    beginTransfer();
+    digitalWrite(PIN_TFT_DC, HIGH);
+    digitalWrite(PIN_TFT_CS, LOW);
+    const size_t end = first + count;
+    for (size_t i = first; i < end; i++) {
+      transferByte(framebuffer[i] >> 8);
+      transferByte(framebuffer[i] & 0xff);
+    }
+    digitalWrite(PIN_TFT_CS, HIGH);
+    endTransfer();
+    framebuffer_band_hashes[band] = hash;
+    bands_sent++;
+    if (y + rows < NV3001B_SCREEN_HEIGHT) yield();
+  }
+
+  framebuffer_hashes_valid = true;
+  framebuffer_flushes_since_full = force_full ? 0 : framebuffer_flushes_since_full + 1;
+  if (first_flush) {
+    Serial.printf("NV3001B: first full-frame flush %lu us\n",
+        (unsigned long)(micros() - flush_started));
+    first_flush = false;
+  } else if (first_delta_flush) {
+    Serial.printf("NV3001B: first delta flush %u/%u bands, %lu us\n",
+        (unsigned)bands_sent, (unsigned)band_count,
+        (unsigned long)(micros() - flush_started));
+    first_delta_flush = false;
+  }
+}
+#endif
+
 void NV3001BDisplay::initPanel() {
 #define CMD0(C) do { writeCommand(C); } while (0)
 #define CMD1(C, A) do { const uint8_t d[] = { A }; writeCommandData(C, d, sizeof(d)); } while (0)
@@ -447,6 +512,16 @@ void NV3001BDisplay::fillPhysicalRect(int x, int y, int w, int h) {
   if (y + h > NV3001B_SCREEN_HEIGHT) h = NV3001B_SCREEN_HEIGHT - y;
   if (w <= 0 || h <= 0) return;
 
+#if NV3001B_USE_FRAMEBUFFER
+  if (framebuffer) {
+    for (int row = 0; row < h; row++) {
+      uint16_t* dest = framebuffer + (y + row) * NV3001B_SCREEN_WIDTH + x;
+      for (int col = 0; col < w; col++) dest[col] = color;
+    }
+    return;
+  }
+#endif
+
   setAddrWindow(x, y, w, h);
   writeColor(color, (uint32_t)w * h);
 }
@@ -494,7 +569,26 @@ bool NV3001BDisplay::begin() {
   initPanel();
   is_on = true;
   color = 0x0000;
+#if NV3001B_USE_FRAMEBUFFER
+  setAddrWindow(0, 0, NV3001B_SCREEN_WIDTH, NV3001B_SCREEN_HEIGHT);
+  writeColor(color, (uint32_t)NV3001B_SCREEN_WIDTH * NV3001B_SCREEN_HEIGHT);
+  if (!framebuffer_allocation_attempted) {
+    framebuffer_allocation_attempted = true;
+    const size_t framebuffer_bytes =
+        (size_t)NV3001B_SCREEN_WIDTH * NV3001B_SCREEN_HEIGHT * sizeof(uint16_t);
+    framebuffer = static_cast<uint16_t*>(
+        calloc((size_t)NV3001B_SCREEN_WIDTH * NV3001B_SCREEN_HEIGHT, sizeof(uint16_t)));
+    Serial.printf("NV3001B: framebuffer %s (%u bytes)\n",
+        framebuffer ? "allocated" : "allocation failed; direct-render fallback",
+        (unsigned)framebuffer_bytes);
+  } else if (framebuffer) {
+    memset(framebuffer, 0, (size_t)NV3001B_SCREEN_WIDTH * NV3001B_SCREEN_HEIGHT * sizeof(uint16_t));
+  }
+  framebuffer_hashes_valid = false;
+  framebuffer_flushes_since_full = 0;
+#else
   fillPhysicalRect(0, 0, NV3001B_SCREEN_WIDTH, NV3001B_SCREEN_HEIGHT);
+#endif
   color = 0xffff;
   text_size = 1;
   cursor_x = 0;
@@ -510,6 +604,9 @@ void NV3001BDisplay::turnOn() {
 void NV3001BDisplay::turnOff() {
   if (!is_on) return;
 
+#if NV3001B_USE_FRAMEBUFFER
+  framebuffer_hashes_valid = false;
+#endif
   writeOptionalPin(PIN_TFT_BL, !PIN_TFT_BL_ACTIVE);
   writeOptionalPin(PIN_TFT_EN, !PIN_TFT_EN_ACTIVE);
   is_on = false;
@@ -520,6 +617,10 @@ void NV3001BDisplay::clear() {
   uint16_t saved = color;
   color = 0x0000;
   fillPhysicalRect(0, 0, NV3001B_SCREEN_WIDTH, NV3001B_SCREEN_HEIGHT);
+#if NV3001B_USE_FRAMEBUFFER
+  framebuffer_hashes_valid = false;
+  flushFramebuffer();
+#endif
   color = saved;
 }
 
@@ -564,6 +665,61 @@ void NV3001BDisplay::print(const char* str) {
   }
 }
 
+void NV3001BDisplay::printWordWrap(const char* str, int max_width) {
+  if (!str || !is_on || max_width <= 0) return;
+
+  const int line_start = cursor_x;
+  int line_end = line_start + scaleWidth(0, max_width);
+  if (line_end > NV3001B_SCREEN_WIDTH) line_end = NV3001B_SCREEN_WIDTH;
+  const int char_width = 6 * textPixelScaleX(text_size);
+  if (line_end - line_start < char_width) return;
+  const int glyph_height = 7 * textPixelScaleY(text_size);
+  const int line_height = 8 * textPixelScaleY(text_size);
+  int bottom = scaleY(NV3001B_LOGICAL_HEIGHT);
+  if (bottom > NV3001B_SCREEN_HEIGHT) bottom = NV3001B_SCREEN_HEIGHT;
+
+  auto nextLine = [&]() {
+    cursor_x = line_start;
+    cursor_y += line_height;
+    return cursor_y + glyph_height <= bottom;
+  };
+
+  while (*str && cursor_y + glyph_height <= bottom) {
+    if (*str == '\n') {
+      str++;
+      if (!nextLine()) return;
+      continue;
+    }
+    if (*str == '\r') {
+      str++;
+      continue;
+    }
+    if (*str == ' ' || *str == '\t') {
+      if (cursor_x != line_start) {
+        if (cursor_x + char_width > line_end) {
+          if (!nextLine()) return;
+        } else {
+          cursor_x += char_width;
+        }
+      }
+      str++;
+      continue;
+    }
+
+    const char* word_end = str;
+    while (*word_end && *word_end != ' ' && *word_end != '\t' &&
+           *word_end != '\n' && *word_end != '\r') word_end++;
+    const int word_width = (word_end - str) * char_width;
+    if (cursor_x != line_start && cursor_x + word_width > line_end && !nextLine()) return;
+
+    while (str < word_end) {
+      if (cursor_x != line_start && cursor_x + char_width > line_end && !nextLine()) return;
+      drawChar(cursor_x, cursor_y, *str++);
+      cursor_x += char_width;
+    }
+  }
+}
+
 void NV3001BDisplay::fillRect(int x, int y, int w, int h) {
   fillPhysicalRect(scaleX(x), scaleY(y), scaleWidth(x, w), scaleHeight(y, h));
 }
@@ -603,4 +759,7 @@ uint16_t NV3001BDisplay::getTextWidth(const char* str) {
 }
 
 void NV3001BDisplay::endFrame() {
+#if NV3001B_USE_FRAMEBUFFER
+  flushFramebuffer();
+#endif
 }

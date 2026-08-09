@@ -11,6 +11,10 @@
   #define NV3001B_USE_FAST_GPIO 0
 #endif
 
+#ifndef NV3001B_USE_FRAMEBUFFER
+  #define NV3001B_USE_FRAMEBUFFER 0
+#endif
+
 #if NV3001B_USE_FAST_GPIO && !NV3001B_USE_SOFTWARE_SPI
   #error "NV3001B_USE_FAST_GPIO requires NV3001B_USE_SOFTWARE_SPI"
 #endif
@@ -49,6 +53,18 @@ class NV3001BDisplay : public DisplayDriver {
   uint8_t text_size = 1;
   int cursor_x = 0;
   int cursor_y = 0;
+#if NV3001B_USE_FRAMEBUFFER
+  uint16_t* framebuffer = nullptr;
+  bool framebuffer_allocation_attempted = false;
+  static constexpr uint8_t framebuffer_band_rows = 8;
+  static constexpr uint16_t framebuffer_max_dimension =
+      NV3001B_PANEL_WIDTH > NV3001B_PANEL_HEIGHT ? NV3001B_PANEL_WIDTH : NV3001B_PANEL_HEIGHT;
+  static constexpr uint8_t framebuffer_hash_capacity =
+      (framebuffer_max_dimension + framebuffer_band_rows - 1) / framebuffer_band_rows;
+  uint64_t framebuffer_band_hashes[framebuffer_hash_capacity] = {};
+  bool framebuffer_hashes_valid = false;
+  uint8_t framebuffer_flushes_since_full = 0;
+#endif
 
   void beginTransport();
   void beginTransfer();
@@ -59,6 +75,9 @@ class NV3001BDisplay : public DisplayDriver {
   void writeCommandData(uint8_t cmd, const uint8_t* data, size_t len);
   void setAddrWindow(uint16_t x, uint16_t y, uint16_t w, uint16_t h);
   void writeColor(uint16_t rgb, uint32_t count);
+#if NV3001B_USE_FRAMEBUFFER
+  void flushFramebuffer();
+#endif
   void fillPhysicalRect(int x, int y, int w, int h);
   void initPanel();
   void drawChar(int x, int y, char ch);
@@ -87,6 +106,7 @@ public:
   void setColor(Color c) override;
   void setCursor(int x, int y) override;
   void print(const char* str) override;
+  void printWordWrap(const char* str, int max_width) override;
   void fillRect(int x, int y, int w, int h) override;
   void drawRect(int x, int y, int w, int h) override;
   void drawXbm(int x, int y, const uint8_t* bits, int w, int h) override;

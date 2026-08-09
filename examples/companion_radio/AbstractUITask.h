@@ -22,6 +22,12 @@ enum class UIEventType {
     ack
 };
 
+enum class UIRadioEvent : uint8_t {
+    Rx,
+    TxComplete,
+    TxFailed
+};
+
 class AbstractUITask {
 protected:
   mesh::MainBoard* _board;
@@ -41,6 +47,19 @@ public:
   void disableSerial() { _serial->disable(); }
   virtual void msgRead(int msgcount) = 0;
   virtual void newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount) = 0;
+  virtual void newMsgWithEvent(uint8_t path_len, const char* from_name, const char* text,
+                               int msgcount, UIEventType type) {
+    (void) type;
+    newMsg(path_len, from_name, text, msgcount);
+  }
   virtual void notify(UIEventType t = UIEventType::none) = 0;
+  virtual void onNewContactVisual() { }
+  virtual void onRadioEvent(UIRadioEvent event, uint8_t payload_type,
+                            int16_t rssi_dbm = 0, int16_t snr_quarter_db = 0) {
+    (void) event;
+    (void) payload_type;
+    (void) rssi_dbm;
+    (void) snr_quarter_db;
+  }
   virtual void loop() = 0;
 };
