@@ -13,6 +13,10 @@ Experimental MeshCore 1.17 companion firmware for the **Heltec RadioCore RCC6** 
   <img src="docs/images/neon-pocket-on-device.jpg" alt="NeonPocket dashboard running on a Heltec RadioCore RCC6" width="760">
 </p>
 
+## Release status
+
+The current experimental release is [`v1.2.0-rc.1`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.1). It adds the animated NeonPocketMC startup, Diagnostics, and Quick Reply to both companion modes. Use only files attached to that release; short-lived Actions artifacts are development builds.
+
 ## Firmware choices
 
 The repository builds two separate application images:
@@ -64,7 +68,12 @@ TCP port 5000 exposes the complete MeshCore companion/admin protocol without sep
 
 ## Flashing
 
-Release packages contain an application image and a merged recovery image for each mode.
+The 1.2 RC1 release contains an application image and a merged recovery image for each mode:
+
+- `NeonPocketMC-RCC6-1.2-RC1-BLE-app.bin`
+- `NeonPocketMC-RCC6-1.2-RC1-BLE-full-recovery-preserves-meshcore-settings.bin`
+- `NeonPocketMC-RCC6-1.2-RC1-WebAP-app.bin`
+- `NeonPocketMC-RCC6-1.2-RC1-WebAP-full-recovery-preserves-meshcore-settings.bin`
 
 - Normal install/update: flash the application `.bin` at **`0x10000`**.
 - Bootloader/partition recovery only: flash the merged recovery `.bin` at **`0x0`**.
@@ -73,7 +82,7 @@ Release packages contain an application image and a merged recovery image for ea
 Example with current `esptool`:
 
 ```text
-python -m esptool --chip esp32c6 --port COM21 write-flash 0x10000 NeonPocketMC-RCC6-BLE-app.bin
+python -m esptool --chip esp32c6 --port COM21 write-flash 0x10000 NeonPocketMC-RCC6-1.2-RC1-BLE-app.bin
 ```
 
 Replace `COM21` with the port actually shown by your computer. Use the Web/AP filename for Web mode. Verify the release checksums before flashing.
