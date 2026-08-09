@@ -70,7 +70,12 @@ jobs:
           test -s "$out/firmware.elf"
           test -s "$out/bootloader.bin"
           test -s "$out/partitions.bin"
-          python -m esptool image_info "$out/firmware.bin" > "$out/image-info.txt"
+          python - "$out/firmware.bin" <<'PY'
+          import pathlib, sys
+          image = pathlib.Path(sys.argv[1]).read_bytes()
+          assert len(image) > 4 and image[0] == 0xE9, "not an ESP application image"
+          assert image[2] == 0x02, "RCC6 application image is not DIO"
+          PY
           sha256sum \
             "$out/firmware.bin" \
             "$out/firmware-merged.bin" \
@@ -91,5 +96,4 @@ jobs:
             .pio/build/${{ matrix.environment }}/firmware.elf
             .pio/build/${{ matrix.environment }}/bootloader.bin
             .pio/build/${{ matrix.environment }}/partitions.bin
-            .pio/build/${{ matrix.environment }}/image-info.txt
             .pio/build/${{ matrix.environment }}/SHA256SUMS
