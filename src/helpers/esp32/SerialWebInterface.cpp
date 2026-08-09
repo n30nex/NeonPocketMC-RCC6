@@ -164,10 +164,10 @@ void SerialWebInterface::configureIdentity(const char* node_name) {
   String station_password;
   const bool opened = preferences.begin("rcc6-web", false);
   if (opened) {
-    password = preferences.getString("ap-pass", "");
-    _prefer_station = preferences.getBool("sta-mode", false);
-    station_ssid = preferences.getString("sta-ssid", "");
-    station_password = preferences.getString("sta-pass", "");
+    if (preferences.isKey("ap-pass")) password = preferences.getString("ap-pass", "");
+    if (preferences.isKey("sta-mode")) _prefer_station = preferences.getBool("sta-mode", false);
+    if (preferences.isKey("sta-ssid")) station_ssid = preferences.getString("sta-ssid", "");
+    if (preferences.isKey("sta-pass")) station_password = preferences.getString("sta-pass", "");
   }
 
   if (password.length() != sizeof(_ap_password) - 1) {
