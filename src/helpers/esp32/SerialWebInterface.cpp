@@ -45,15 +45,15 @@ String jsonEscape(const char* value) {
   String escaped;
   if (value == nullptr) return escaped;
   escaped.reserve(strlen(value) + 8);
-  constexpr char HEX[] = "0123456789abcdef";
+  constexpr char HEX_DIGITS[] = "0123456789abcdef";
   for (const uint8_t* p = reinterpret_cast<const uint8_t*>(value); *p != 0; p++) {
     if (*p == '"' || *p == '\\') {
       escaped += '\\';
       escaped += static_cast<char>(*p);
     } else if (*p < 0x20) {
       escaped += "\\u00";
-      escaped += HEX[*p >> 4];
-      escaped += HEX[*p & 0x0f];
+      escaped += HEX_DIGITS[*p >> 4];
+      escaped += HEX_DIGITS[*p & 0x0f];
     } else {
       escaped += static_cast<char>(*p);
     }
