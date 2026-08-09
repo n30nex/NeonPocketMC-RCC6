@@ -67,9 +67,9 @@ Wait at least eight seconds after boot before using Hold; the early-boot hold re
 
 Attach a suitable antenna before transmitting. For battery use, use a protected single-cell 3.7 V Li-ion/LiPo pack and verify that the pack permits the board's configured charging current before charging it from USB.
 
-## RC1 safety hold
+## Release candidates
 
-The RC1 release is unpublished while the reported startup failure is reproduced and a replacement is tested on the exact RCC6 hardware. There is currently no endorsed public binary in this repository. Source remains available for review, but building it yourself does not make the result a qualified release.
+The original RC1 binary was withdrawn after startup-failure reports. **RC2 replaces it** with independently built BLE and Web/AP images that were app-only flashed and smoke-tested on the exact RCC6 hardware. Do not use old RC1 binaries copied from caches or chat attachments.
 
 ## Build from source
 
@@ -91,7 +91,7 @@ The application binary is produced under:
 
 The Web/AP image starts a WPA-protected setup network and serves its WebUI at `http://192.168.4.1`. After the Home-page setup wizard joins a local 2.4 GHz network, the TFT shows the DHCP address. Station-mode HTTP uses username `meshcore` and the eight-letter device key shown on the TFT. Raw TCP/5000 exposes the full MeshCore companion/admin protocol without application authentication, so use station mode only on a trusted private LAN.
 
-## RC1 validation
+## RC2 validation
 
 Validated on physical hardware:
 
@@ -104,10 +104,13 @@ Validated on physical hardware:
 - Secure six-digit PIN authentication, node load in the companion app, disconnect, re-advertise, and reconnect.
 - Native landscape UI and one-button navigation on the device.
 - Battery-powered boot and display operation.
+- Web/AP station join, authenticated WebUI load, and DHCP address shown on the TFT.
+- Native TCP/5000 `DEVICE_INFO` response from a desktop client.
+- Direct BLE-mode and WebUI-mode Public LoRa transmissions independently received by a second MeshCore companion radio at 11.75 and 12.0 dB SNR.
 
 Still to qualify before final 1.0:
 
-- End-to-end LoRa RX/TX receipts with a second radio.
+- Full bidirectional LoRa soak and failure-path qualification.
 - Complete one-button action matrix.
 - Every notification color and animation path.
 - Controlled low-battery and transmit-failure paths.
