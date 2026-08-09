@@ -57,7 +57,7 @@ private:
   bool _tcp_connected;
   uint16_t _tcp_port;
   char _ap_ssid[33];
-  char _ap_password[17];
+  char _ap_password[9];
 
   WiFiServer _tcp_server;
   WiFiClient _tcp_client;

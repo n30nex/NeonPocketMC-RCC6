@@ -12,7 +12,7 @@
 #include <cstring>
 
 namespace {
-constexpr char PASSWORD_ALPHABET[] = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+constexpr char PASSWORD_ALPHABET[] = "abcdefghjkmnpqrstuvwxyz";
 constexpr char HTTP_SESSION_HEADER[] = "X-RCC6-Session";
 constexpr char HTTP_ACK_HEADER[] = "X-RCC6-Ack";
 constexpr char HTTP_SEQUENCE_HEADER[] = "X-RCC6-Seq";
@@ -118,7 +118,7 @@ void SerialWebInterface::configureIdentity(const char* node_name) {
   const bool opened = preferences.begin("rcc6-web", false);
   if (opened) password = preferences.getString("ap-pass", "");
 
-  if (password.length() < 12 || password.length() > 16) {
+  if (password.length() != sizeof(_ap_password) - 1) {
     for (size_t i = 0; i < sizeof(_ap_password) - 1; i++) {
       _ap_password[i] = PASSWORD_ALPHABET[esp_random() % (sizeof(PASSWORD_ALPHABET) - 1)];
     }
