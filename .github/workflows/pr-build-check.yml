@@ -28,6 +28,8 @@ jobs:
     steps:
       - name: Clone Repo
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Build and verify embedded WebUI
         run: |
@@ -48,6 +50,8 @@ jobs:
     steps:
       - name: Clone Repo
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
@@ -58,7 +62,7 @@ jobs:
       - name: Upload exact firmware candidate
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.environment }}-${{ github.sha }}
+          name: ${{ matrix.environment }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             .pio/build/${{ matrix.environment }}/firmware.bin
             .pio/build/${{ matrix.environment }}/firmware.elf

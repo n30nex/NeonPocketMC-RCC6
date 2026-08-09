@@ -1,6 +1,8 @@
 # RCC6 MeshCore WebUI
 
-Responsive, offline WebUI for the RCC6 companion-radio SoftAP. It uses the MeshCore companion protocol through a polling HTTP transport:
+Responsive, offline WebUI for the RCC6 companion radio. It starts on a 2.4 GHz setup AP and can save a local 2.4 GHz SSID/password, reboot into station mode, and show its DHCP address on the TFT.
+
+The browser uses the MeshCore companion protocol through a polling HTTP transport:
 
 - `POST /api/frame` accepts one raw companion payload as `application/octet-stream`.
 - `GET /api/frame` returns one raw companion payload, or HTTP `204` when none is queued.
@@ -27,5 +29,7 @@ MeshCore.js 1.14.0 parses the current firmware's core-stats payload incorrectly,
 ## Security boundary
 
 This browser code exposes only query, sync, send, and self-advert actions. The HTTP transport must enforce the same command allowlist and one-controller policy server-side; browser validation is not a security boundary.
+
+Station-mode HTTP uses Basic authentication with username `meshcore` and the device key shown on the TFT. Raw TCP port 5000 remains the full, unauthenticated MeshCore companion/admin protocol for native clients. Only enable station mode on a trusted private LAN: any host on that LAN can control the radio over TCP, including administrative commands.
 
 See `THIRD_PARTY_NOTICES.md` for bundled software attribution.

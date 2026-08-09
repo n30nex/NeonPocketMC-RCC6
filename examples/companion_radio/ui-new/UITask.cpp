@@ -245,7 +245,7 @@ class HomeScreen : public UIScreen {
       case HomePage::RADIO: return "RADIO";
       case HomePage::BLUETOOTH:
 #ifdef RCC6_WEB_AP
-        return "WIFI AP";
+        return serial_interface.isStationMode() ? "LOCAL WIFI" : "SETUP AP";
 #else
         return "BLUETOOTH";
 #endif
@@ -266,7 +266,13 @@ class HomeScreen : public UIScreen {
       return _task->isPowerConfirmArmed() ? "HOLD AGAIN TO CONFIRM" : "HOLD FOR POWER";
     }
     if (_page == HomePage::FIRST && _task->getMsgCount() > 0) return "CLICK NEXT  2X INBOX";
-    if (_page == HomePage::BLUETOOTH) return "CLICK NEXT  2X TOGGLE";
+    if (_page == HomePage::BLUETOOTH) {
+#ifdef RCC6_WEB_AP
+      return serial_interface.isStationMode() ? "CLICK NEXT  2X SETUP AP" : "CLICK NEXT  2X TOGGLE";
+#else
+      return "CLICK NEXT  2X TOGGLE";
+#endif
+    }
     if (_page == HomePage::ADVERT) return "CLICK NEXT  2X SEND";
     return "CLICK NEXT";
   }
@@ -487,10 +493,11 @@ class HomeScreen : public UIScreen {
     } else if (_page == HomePage::BLUETOOTH) {
 #ifdef RCC6_WEB_AP
       const bool enabled = _task->isSerialEnabled();
+      const bool station = serial_interface.isStationMode();
       display.setTextSize(1);
       display.setColor(enabled ? DisplayDriver::GREEN : DisplayDriver::RED);
       display.setCursor(8, 40);
-      display.print(enabled ? "WEB AP ON" : "WEB AP OFF");
+      display.print(enabled ? (station ? "LOCAL WIFI ON" : "SETUP AP ON") : "NETWORK OFF");
       display.setColor(_task->hasConnection() ? DisplayDriver::GREEN : DisplayDriver::ORANGE);
       display.drawTextRightAlign(display.width() - 8, 40,
           _task->hasConnection() ? "CLIENT READY" : "WAITING");
@@ -498,12 +505,18 @@ class HomeScreen : public UIScreen {
       display.setColor(DisplayDriver::BLUE);
       display.drawRect(4, 54, display.width() - 8, 55);
       display.setColor(DisplayDriver::LIGHT);
-      snprintf(tmp, sizeof(tmp), "SSID %s", serial_interface.getApSsid());
+      snprintf(tmp, sizeof(tmp), "SSID %s", serial_interface.getCurrentSsid());
       display.drawTextEllipsized(8, 59, display.width() - 16, tmp);
-      snprintf(tmp, sizeof(tmp), "PASS %s", serial_interface.getApPassword());
+      if (station) {
+        snprintf(tmp, sizeof(tmp), "AUTH meshcore/%s", serial_interface.getApPassword());
+      } else {
+        snprintf(tmp, sizeof(tmp), "PASS %s%s", serial_interface.getApPassword(),
+            serial_interface.isFallbackActive() ? "  FALLBACK" : "");
+      }
       display.drawTextEllipsized(8, 75, display.width() - 16, tmp);
-      const IPAddress ap_ip = serial_interface.getApIP();
-      snprintf(tmp, sizeof(tmp), "OPEN %u.%u.%u.%u", ap_ip[0], ap_ip[1], ap_ip[2], ap_ip[3]);
+      const IPAddress current_ip = serial_interface.getCurrentIP();
+      snprintf(tmp, sizeof(tmp), "OPEN %u.%u.%u.%u", current_ip[0], current_ip[1],
+          current_ip[2], current_ip[3]);
       display.drawTextEllipsized(8, 91, display.width() - 16, tmp);
 #else
       const bool enabled = _task->isSerialEnabled();
@@ -879,6 +892,16 @@ public:
     }
 #endif
     if (c == KEY_ENTER && _page == HomePage::BLUETOOTH) {
+#ifdef RCC6_WEB_AP
+      if (serial_interface.isStationMode()) {
+        const bool saved = serial_interface.selectSetupAp();
+#ifdef HELTEC_RCC6_NEON_UI
+        _task->showAlert(saved ? "Restarting setup AP" : "Setup AP save failed", 1000,
+            saved ? DisplayDriver::ORANGE : DisplayDriver::RED);
+#endif
+        return true;
+      }
+#endif
       if (_task->isSerialEnabled()) {
         _task->disableSerial();
       } else {
@@ -886,7 +909,7 @@ public:
       }
 #ifdef HELTEC_RCC6_NEON_UI
 #ifdef RCC6_WEB_AP
-      _task->showAlert(_task->isSerialEnabled() ? "WiFi AP on" : "WiFi AP off", 800,
+      _task->showAlert(_task->isSerialEnabled() ? "Setup AP on" : "Setup AP off", 800,
           _task->isSerialEnabled() ? DisplayDriver::GREEN : DisplayDriver::ORANGE);
 #else
       _task->showAlert(_task->isSerialEnabled() ? "Bluetooth on" : "Bluetooth off", 800,

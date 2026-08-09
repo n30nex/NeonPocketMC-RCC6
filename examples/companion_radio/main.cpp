@@ -230,7 +230,25 @@ void setup() {
   #endif
     the_mesh.startInterface(serial_interface);
 #elif defined(ESP32)
+#ifdef HELTEC_RCC6_NEON_UI
+  if (!SPIFFS.begin(false)) {
+    Serial.println("ERROR: SPIFFS mount failed; settings were not formatted");
+#ifdef DISPLAY_CLASS
+    if (disp != NULL) {
+      disp->startFrame();
+      disp->setTextSize(1);
+      disp->setColor(DisplayDriver::RED);
+      disp->drawTextCentered(disp->width() / 2, disp->height() / 2 - 10, "STORAGE ERROR");
+      disp->setColor(DisplayDriver::LIGHT);
+      disp->drawTextCentered(disp->width() / 2, disp->height() / 2 + 8, "Settings preserved");
+      disp->endFrame();
+    }
+#endif
+    halt();
+  }
+#else
   SPIFFS.begin(true);
+#endif
   store.begin();
   the_mesh.begin(
     #ifdef DISPLAY_CLASS

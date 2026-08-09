@@ -3,7 +3,13 @@ import Constants from "@liamcottle/meshcore.js/src/constants.js";
 
 const MAX_FRAME_BYTES = 176;
 const MAX_MESSAGE_BYTES = 140;
+const MAX_HISTORY_MESSAGES = 120;
 const POLL_DELAY_MS = 90;
+const COMMAND_TIMEOUT_MS = 30000;
+const MAX_RECOVERY_ATTEMPTS = 2;
+const RADIO_LEASE_KEY = "rcc6-radio-owner";
+const RADIO_LEASE_MS = 7000;
+const RADIO_HEARTBEAT_MS = 2000;
 const $ = (id) => document.getElementById(id);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const encoder = new TextEncoder();
@@ -14,12 +20,14 @@ function createSessionId() {
   return [...bytes].map((value) => value.toString(16).padStart(2, "0")).join("");
 }
 
+const TAB_OWNER_ID = createSessionId();
+
 function loadSessionId() {
   try {
-    const saved = sessionStorage.getItem("rcc6-session");
+    const saved = localStorage.getItem("rcc6-session");
     if (/^[0-9a-f]{32}$/.test(saved || "")) return saved;
     const created = createSessionId();
-    sessionStorage.setItem("rcc6-session", created);
+    localStorage.setItem("rcc6-session", created);
     return created;
   } catch {
     return createSessionId();
@@ -33,31 +41,125 @@ class HttpPollingConnection extends Connection {
     this.failures = 0;
     this.interrupted = false;
     this.sessionId = loadSessionId();
-    this.sequenceStorageKey = `rcc6-last-sequence-${this.sessionId}`;
-    try { this.lastDispatchedSequence = Number(sessionStorage.getItem(this.sequenceStorageKey)) || 0; }
-    catch { this.lastDispatchedSequence = 0; }
-    this.pendingAck = this.lastDispatchedSequence;
+    this.lastDispatchedSequence = 0;
+    this.pendingAck = 0;
+    this.ready = false;
+    this.connecting = false;
+    this.drainTask = null;
+    this.leaseTimer = null;
+    this.storageListening = false;
+    this.onStorage = (event) => {
+      if (event.key === RADIO_LEASE_KEY && this.running && !this.ownsLease()) this.handleLeaseLoss();
+    };
   }
 
   async connect() {
-    if (this.running) return;
-    this.running = true;
-    this.abortController = new AbortController();
-    this.pollTask = this.poll();
-    this.emit("connected");
+    if (this.running || this.connecting) return;
+    this.connecting = true;
+    try {
+      if (!this.storageListening) {
+        window.addEventListener("storage", this.onStorage);
+        this.storageListening = true;
+      }
+      if (!await this.claimLease()) {
+        this.emit("transport-busy");
+        return;
+      }
+      this.running = true;
+      this.ready = false;
+      this.abortController = new AbortController();
+      this.drainTask = this.drainRetainedFrames();
+      const drained = await this.drainTask;
+      if (!drained || !this.running || !this.ownsLease()) return;
+      this.ready = true;
+      this.pollTask = this.poll();
+      this.emit("connected");
+    } finally {
+      this.connecting = false;
+    }
   }
 
   async close() {
+    const wasReady = this.ready;
+    this.running = false;
+    this.ready = false;
+    this.abortController?.abort();
+    try { await this.drainTask; } catch { /* aborted */ }
+    try { await this.pollTask; } catch { /* aborted */ }
+    if (wasReady) this.onDisconnected();
+    this.releaseLease();
+    if (this.storageListening) window.removeEventListener("storage", this.onStorage);
+    this.storageListening = false;
+  }
+
+  readLease() {
+    try {
+      const lease = JSON.parse(localStorage.getItem(RADIO_LEASE_KEY) || "null");
+      return lease && typeof lease.owner === "string" && Number.isFinite(lease.expires) ? lease : null;
+    } catch { return null; }
+  }
+
+  ownsLease() {
+    const lease = this.readLease();
+    return lease?.owner === TAB_OWNER_ID && lease.expires > Date.now();
+  }
+
+  writeLease() {
+    try {
+      localStorage.setItem(RADIO_LEASE_KEY, JSON.stringify({ owner: TAB_OWNER_ID, expires: Date.now() + RADIO_LEASE_MS }));
+      return this.ownsLease();
+    } catch { return false; }
+  }
+
+  async claimLease() {
+    const current = this.readLease();
+    if (current && current.owner !== TAB_OWNER_ID && current.expires > Date.now()) return false;
+    if (!this.writeLease()) return false;
+    await delay(80);
+    if (!this.ownsLease()) return false;
+    this.stopHeartbeat();
+    this.leaseTimer = setInterval(() => {
+      if (!this.ownsLease() || !this.writeLease()) this.handleLeaseLoss();
+    }, RADIO_HEARTBEAT_MS);
+    return true;
+  }
+
+  stopHeartbeat() {
+    clearInterval(this.leaseTimer);
+    this.leaseTimer = null;
+  }
+
+  handleLeaseLoss() {
+    this.stopHeartbeat();
     if (!this.running) return;
     this.running = false;
-    this.abortController.abort();
-    try { await this.pollTask; } catch { /* aborted */ }
-    this.onDisconnected();
+    this.ready = false;
+    this.abortController?.abort();
+    this.emit("transport-busy");
+  }
+
+  releaseLease() {
+    this.stopHeartbeat();
+    try {
+      if (this.readLease()?.owner === TAB_OWNER_ID) localStorage.removeItem(RADIO_LEASE_KEY);
+    } catch { /* storage unavailable */ }
+  }
+
+  leavePage() {
+    this.running = false;
+    this.ready = false;
+    this.abortController?.abort();
+    this.releaseLease();
   }
 
   async sendToRadioFrame(data) {
     const frame = data instanceof Uint8Array ? data : new Uint8Array(data);
     if (!frame.length || frame.length > MAX_FRAME_BYTES) throw new Error("Invalid companion frame size");
+    if (!this.ready) throw new Error("RCC6 companion link is still draining");
+    if (!this.ownsLease()) {
+      this.handleLeaseLoss();
+      throw new Error("Another tab owns the RCC6 companion link");
+    }
     try {
       const response = await fetch("/api/frame", {
         method: "POST",
@@ -73,45 +175,59 @@ class HttpPollingConnection extends Connection {
       if (!response.ok) throw new Error(`Frame POST failed (${response.status})`);
       this.markHealthy();
     } catch (error) {
-      if (error.name !== "AbortError") this.markFailure(error);
+      if (error.name !== "AbortError") {
+        error.rcc6TransportFailure = true;
+        this.markFailure(error);
+      }
       throw error;
     }
   }
 
+  async fetchFrame() {
+    const headers = { Accept: "application/octet-stream", "X-RCC6-Session": this.sessionId };
+    if (this.pendingAck) headers["X-RCC6-Ack"] = String(this.pendingAck);
+    const response = await fetch("/api/frame", { headers, cache: "no-store", credentials: "same-origin", signal: this.abortController.signal });
+    if (response.status === 204) {
+      this.pendingAck = 0;
+      this.markHealthy();
+      return false;
+    }
+    if (!response.ok) throw new Error(`Frame poll failed (${response.status})`);
+    const sequence = Number(response.headers.get("X-RCC6-Seq"));
+    if (!Number.isInteger(sequence) || sequence < 1 || sequence > 0xffffffff) throw new Error("Invalid frame sequence from RCC6");
+    const frame = new Uint8Array(await response.arrayBuffer());
+    if (!frame.length || frame.length > MAX_FRAME_BYTES) throw new Error("Invalid frame from RCC6");
+    if (sequence !== this.lastDispatchedSequence) {
+      this.onFrameReceived(frame);
+      this.lastDispatchedSequence = sequence;
+      // MeshCore.js defers `once` handlers twice; let message persistence finish before ACK.
+      await delay(0);
+      await delay(0);
+    }
+    this.pendingAck = sequence;
+    this.markHealthy();
+    return true;
+  }
+
+  async drainRetainedFrames() {
+    while (this.running) {
+      if (!this.ownsLease()) { this.handleLeaseLoss(); return false; }
+      try {
+        if (!await this.fetchFrame()) return true;
+      } catch (error) {
+        if (!this.running || error.name === "AbortError") return false;
+        this.markFailure(error);
+        await delay(Math.min(250 * 2 ** Math.min(this.failures, 3), 2000));
+      }
+    }
+    return false;
+  }
+
   async poll() {
     while (this.running) {
+      if (!this.ownsLease()) { this.handleLeaseLoss(); break; }
       try {
-        const headers = {
-          Accept: "application/octet-stream",
-          "X-RCC6-Session": this.sessionId,
-        };
-        if (this.pendingAck) headers["X-RCC6-Ack"] = String(this.pendingAck);
-        const response = await fetch("/api/frame", {
-          headers,
-          cache: "no-store",
-          credentials: "same-origin",
-          signal: this.abortController.signal,
-        });
-        if (response.status === 204) {
-          this.pendingAck = 0;
-          this.markHealthy();
-          await delay(POLL_DELAY_MS);
-          continue;
-        }
-        if (!response.ok) throw new Error(`Frame poll failed (${response.status})`);
-        const sequence = Number(response.headers.get("X-RCC6-Seq"));
-        if (!Number.isInteger(sequence) || sequence < 1 || sequence > 0xffffffff) {
-          throw new Error("Invalid frame sequence from RCC6");
-        }
-        const frame = new Uint8Array(await response.arrayBuffer());
-        if (!frame.length || frame.length > MAX_FRAME_BYTES) throw new Error("Invalid frame from RCC6");
-        if (sequence !== this.lastDispatchedSequence) {
-          this.onFrameReceived(frame);
-          this.lastDispatchedSequence = sequence;
-          try { sessionStorage.setItem(this.sequenceStorageKey, String(sequence)); } catch { /* optional */ }
-        }
-        this.pendingAck = sequence;
-        this.markHealthy();
+        if (!await this.fetchFrame()) await delay(POLL_DELAY_MS);
       } catch (error) {
         if (!this.running || error.name === "AbortError") break;
         this.markFailure(error);
@@ -132,12 +248,13 @@ class HttpPollingConnection extends Connection {
     const restored = this.interrupted;
     this.failures = 0;
     this.interrupted = false;
-    if (restored) this.emit("transport-restored");
+    if (restored && this.ready) this.emit("transport-restored");
   }
 }
 
 const state = {
   connected: false,
+  linkStatus: "reconnecting",
   startedAt: Date.now(),
   view: "home",
   self: null,
@@ -151,20 +268,104 @@ const state = {
   radio: null,
   packets: null,
   rfSamples: [],
+  network: null,
+  historyNode: "",
 };
 
-const connection = new HttpPollingConnection();
+let connection = new HttpPollingConnection();
 let commandTail = Promise.resolve();
 let syncing = false;
+let recovering = false;
+let recoveryAttempts = 0;
+let unannouncedMessages = 0;
 
 function exclusive(task) {
-  const result = commandTail.then(task);
+  const result = commandTail.then(() => {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const error = new Error("Companion command timed out");
+        error.rcc6CommandTimeout = true;
+        reject(error);
+      }, COMMAND_TIMEOUT_MS);
+    });
+    return Promise.race([Promise.resolve().then(task), timeout]).finally(() => clearTimeout(timer));
+  });
   commandTail = result.catch(() => {});
+  result.catch((error) => {
+    if (error?.rcc6CommandTimeout || error?.rcc6TransportFailure) scheduleConnectionRecovery();
+  });
   return result;
+}
+
+function scheduleConnectionRecovery() {
+  if (recovering || recoveryAttempts >= MAX_RECOVERY_ATTEMPTS) {
+    if (recoveryAttempts >= MAX_RECOVERY_ATTEMPTS) toast("Radio sync is paused. Tap the link status to retry.", "error");
+    return;
+  }
+  recovering = true;
+  recoveryAttempts += 1;
+  setLink("reconnecting");
+  toast(`Recovering companion link (${recoveryAttempts}/${MAX_RECOVERY_ATTEMPTS})`, "warn");
+  setTimeout(async () => {
+    const previous = connection;
+    try {
+      await previous.close();
+      syncing = false;
+      $("refresh-button").disabled = false;
+      connection = new HttpPollingConnection();
+      bindConnectionEvents(connection);
+      await connection.connect();
+    } catch {
+      setLink("offline");
+      toast("Companion recovery failed", "error");
+    } finally {
+      recovering = false;
+    }
+  }, 0);
 }
 
 function text(id, value) { $(id).textContent = value ?? "—"; }
 function hex(bytes, length = bytes?.length ?? 0) { return bytes ? [...bytes.slice(0, length)].map((value) => value.toString(16).padStart(2, "0")).join("") : ""; }
+function hashText(value) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) hash = Math.imul(hash ^ value.charCodeAt(index), 16777619);
+  return (hash >>> 0).toString(16);
+}
+function historyKey() { return state.self?.publicKey ? `rcc6-history-${hex(state.self.publicKey)}` : ""; }
+function pendingHistoryKey() { return `rcc6-history-pending-${connection.sessionId}`; }
+function messageId(kind, key, timestamp, value) { return `${kind}:${key}:${timestamp}:${hashText(value)}`; }
+function persistHistory() {
+  const key = historyKey() || pendingHistoryKey();
+  try { localStorage.setItem(key, JSON.stringify(state.messages.slice(-MAX_HISTORY_MESSAGES))); } catch { /* storage is optional */ }
+}
+function readHistory(key) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || "[]");
+    if (!Array.isArray(saved)) return [];
+    return saved.filter((item) => item && typeof item.id === "string" && typeof item.key === "string" && typeof item.text === "string")
+      .slice(-MAX_HISTORY_MESSAGES)
+      .map((item) => ({
+        id: item.id.slice(0, 180), key: item.key.slice(0, 100), text: item.text.slice(0, MAX_MESSAGE_BYTES * 2),
+        timestamp: Number.isFinite(item.timestamp) ? item.timestamp : 0,
+        direction: item.direction === "out" ? "out" : "in",
+        status: typeof item.status === "string" ? item.status.slice(0, 16) : "received",
+        unread: Boolean(item.unread),
+        snr: Number.isFinite(item.snr) ? item.snr : undefined,
+        expectedAckCrc: Number.isInteger(item.expectedAckCrc) ? item.expectedAckCrc : undefined,
+      }));
+  } catch { return []; }
+}
+function loadHistoryForNode() {
+  const key = historyKey();
+  if (!key || state.historyNode === key) return;
+  state.historyNode = key;
+  const merged = [...readHistory(key), ...readHistory(pendingHistoryKey()), ...state.messages];
+  const seen = new Set();
+  state.messages = merged.filter((item) => !seen.has(item.id) && seen.add(item.id)).slice(-MAX_HISTORY_MESSAGES);
+  try { localStorage.removeItem(pendingHistoryKey()); } catch { /* storage is optional */ }
+  persistHistory();
+}
 function channelKey(channel) { return `ch:${channel.channelIdx}`; }
 function contactKey(contact) { return `dm:${hex(contact.publicKey)}`; }
 function initials(name = "?") { return name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "?"; }
@@ -204,7 +405,8 @@ function toast(message, kind = "ok") {
 function setLink(status) {
   const online = status === "connected";
   state.connected = online;
-  const label = online ? "Connected" : status === "reconnecting" ? "Reconnecting" : "Offline";
+  state.linkStatus = status;
+  const label = online ? "Connected" : status === "reconnecting" ? "Reconnecting" : status === "busy" ? "Another tab active" : "Offline";
   text("link-label", label);
   text("side-status", label);
   text("hero-link", label);
@@ -232,25 +434,28 @@ function normalizeTargets() {
 }
 
 function addMessage(message) {
-  state.messages.push({ id: `${Date.now()}-${Math.random()}`, ...message });
-  if (state.messages.length > 160) state.messages.splice(0, state.messages.length - 160);
+  const item = { id: `${Date.now()}-${Math.random()}`, ...message };
+  if (state.messages.some((existing) => existing.id === item.id)) return null;
+  state.messages.push(item);
+  if (state.messages.length > MAX_HISTORY_MESSAGES) state.messages.splice(0, state.messages.length - MAX_HISTORY_MESSAGES);
+  persistHistory();
   renderMessages();
   renderHome();
+  return item;
 }
 
-function ingestWaiting(waiting) {
-  for (const item of waiting) {
-    if (item.contactMessage) {
-      const message = item.contactMessage;
-      const key = targetForContactPrefix(message.pubKeyPrefix);
-      addMessage({ key, text: message.text, timestamp: message.senderTimestamp, direction: "in", status: "received", unread: state.view !== "messages" || state.selected !== key, snr: message.snr });
-    } else if (item.channelMessage) {
-      const message = item.channelMessage;
-      const key = `ch:${message.channelIdx}`;
-      addMessage({ key, text: message.text, timestamp: message.senderTimestamp, direction: "in", status: "received", unread: state.view !== "messages" || state.selected !== key, snr: message.snr });
-    }
+function ingestWaiting(item) {
+  if (item.contactMessage) {
+    const message = item.contactMessage;
+    const key = targetForContactPrefix(message.pubKeyPrefix);
+    return addMessage({ id: messageId("dm", hex(message.pubKeyPrefix), message.senderTimestamp, message.text), key, text: message.text, timestamp: message.senderTimestamp, direction: "in", status: "received", unread: state.view !== "messages" || state.selected !== key, snr: message.snr }) ? 1 : 0;
   }
-  if (waiting.length) toast(`${waiting.length} new message${waiting.length === 1 ? "" : "s"}`, "warn");
+  if (item.channelMessage) {
+    const message = item.channelMessage;
+    const key = `ch:${message.channelIdx}`;
+    return addMessage({ id: messageId("channel", key, message.senderTimestamp, message.text), key, text: message.text, timestamp: message.senderTimestamp, direction: "in", status: "received", unread: state.view !== "messages" || state.selected !== key, snr: message.snr }) ? 1 : 0;
+  }
+  return 0;
 }
 
 function refreshNearbyFromContacts() {
@@ -260,14 +465,29 @@ function refreshNearbyFromContacts() {
 async function refreshContacts() {
   const contacts = await connection.getContacts();
   state.contacts = contacts.sort((a, b) => (b.lastAdvert || 0) - (a.lastAdvert || 0));
+  let historyChanged = false;
+  for (const message of state.messages) {
+    if (!message.key.startsWith("dm-prefix:")) continue;
+    const prefix = message.key.slice("dm-prefix:".length);
+    const contact = state.contacts.find((item) => hex(item.publicKey).startsWith(prefix));
+    if (contact) { message.key = contactKey(contact); historyChanged = true; }
+  }
+  if (historyChanged) persistHistory();
   refreshNearbyFromContacts();
   normalizeTargets();
   renderAll();
 }
 
 async function syncMessages() {
-  const waiting = await connection.getWaitingMessages();
-  ingestWaiting(waiting);
+  let added = 0;
+  while (true) {
+    const waiting = await connection.syncNextMessage();
+    if (!waiting) break;
+    added += ingestWaiting(waiting);
+  }
+  added += unannouncedMessages;
+  unannouncedMessages = 0;
+  if (added) toast(`${added} new message${added === 1 ? "" : "s"}`, "warn");
 }
 
 async function refreshStats() {
@@ -286,13 +506,50 @@ async function refreshStats() {
   renderAll();
 }
 
+async function refreshNetworkStatus() {
+  try {
+    const response = await fetch("/api/network", {
+      headers: { Accept: "application/json", "X-RCC6-Session": connection.sessionId },
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    if (!response.ok) throw new Error(`Network status failed (${response.status})`);
+    const data = await response.json();
+    if (data.mode !== "ap" && data.mode !== "station") throw new Error("Invalid network mode");
+    state.network = {
+      mode: data.mode,
+      ssid: typeof data.ssid === "string" ? data.ssid : "",
+      ip: typeof data.ip === "string" ? data.ip : "",
+      fallback: Boolean(data.fallback),
+    };
+  } catch { /* network configuration endpoint is optional on older builds */ }
+  renderNetwork();
+}
+
+async function setNetwork(fields) {
+  if (!connection.ready || !connection.ownsLease()) throw new Error("RCC6 companion link is not ready");
+  const response = await fetch("/api/network", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "X-RCC6-Session": connection.sessionId,
+    },
+    body: new URLSearchParams(fields),
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+  if (!response.ok) throw new Error(`Network update failed (${response.status})`);
+}
+
 async function syncAll() {
   if (syncing) return;
   syncing = true;
   $("refresh-button").disabled = true;
   try {
+    await refreshNetworkStatus();
     try { state.device = await connection.deviceQuery(Constants.SupportedCompanionProtocolVersion); } catch { /* older firmware */ }
     state.self = await connection.getSelfInfo(6000);
+    loadHistoryForNode();
     await refreshContacts();
     try { state.channels = (await connection.getChannels()).filter((item) => item.name); } catch { state.channels = []; }
     normalizeTargets();
@@ -404,6 +661,7 @@ function renderMessages() {
 function selectTarget(key) {
   state.selected = key;
   for (const message of state.messages) if (message.key === key) message.unread = false;
+  persistHistory();
   renderMessages();
   renderHome();
 }
@@ -473,6 +731,74 @@ function drawSignalChart() {
   context.strokeStyle = "#44f08a"; context.lineWidth = 2; context.shadowColor = "#44f08a"; context.shadowBlur = 8; context.stroke();
 }
 
+function renderNetwork() {
+  const network = state.network;
+  const busy = state.linkStatus === "busy";
+  if (!network) {
+    text("network-title", "Set up local Wi-Fi");
+    text("network-summary", "Use your 2.4 GHz home network instead of staying on the RCC6 setup hotspot.");
+    text("network-current", "Network status unavailable");
+    text("more-network-title", "RCC6 network");
+    text("ap-address", "Current mode and IP are unavailable");
+    $("network-setup-button").textContent = "Set up local Wi-Fi";
+  } else if (network.mode === "station") {
+    text("network-title", `Connected to ${network.ssid || "local Wi-Fi"}`);
+    text("network-summary", `${network.ip || "DHCP address pending"}${network.fallback ? " · fallback active" : " · ready on your local network"}`);
+    text("network-current", `${network.ssid || "Local Wi-Fi"} · ${network.ip || "DHCP pending"}`);
+    text("more-network-title", "Local Wi-Fi");
+    text("ap-address", `${network.ssid || "Station mode"} · ${network.ip || "DHCP pending"}`);
+    $("network-setup-button").textContent = "Change local Wi-Fi";
+  } else {
+    text("network-title", network.fallback ? "Local Wi-Fi needs attention" : "Set up local Wi-Fi");
+    text("network-summary", `${network.ssid || "RCC6 setup AP"} · ${network.ip || "192.168.4.1"}${network.fallback ? " · station fallback" : ""}`);
+    text("network-current", `${network.ssid || "RCC6 setup AP"} · ${network.ip || "192.168.4.1"}`);
+    text("more-network-title", network.fallback ? "Fallback setup AP" : "RCC6 setup AP");
+    text("ap-address", `${network.ssid || "Setup hotspot"} · ${network.ip || "192.168.4.1"}`);
+    $("network-setup-button").textContent = "Set up local Wi-Fi";
+  }
+  $("network-setup-button").disabled = busy;
+  $("return-ap-button").hidden = network?.mode !== "station";
+  $("return-ap-button").disabled = busy;
+}
+
+function openNetworkDialog() {
+  renderNetwork();
+  $("network-form").hidden = false;
+  $("network-result").hidden = true;
+  $("network-ssid").value = state.network?.mode === "station" ? state.network.ssid : "";
+  $("network-password").value = "";
+  $("network-password").type = "password";
+  $("network-reveal").textContent = "Show";
+  $("network-reveal").setAttribute("aria-pressed", "false");
+  const dialog = $("network-dialog");
+  if (dialog.showModal) dialog.showModal(); else dialog.setAttribute("open", "");
+  $("network-ssid").focus();
+}
+
+function closeNetworkDialog() {
+  const dialog = $("network-dialog");
+  if (dialog.close) dialog.close(); else dialog.removeAttribute("open");
+}
+
+function showNetworkResult(mode) {
+  $("network-form").hidden = true;
+  $("network-result").hidden = false;
+  const steps = $("network-result-steps");
+  steps.replaceChildren();
+  const values = mode === "station"
+    ? ["Wait for RCC6 to restart.", "Reconnect this phone or computer to your home Wi-Fi.", "Read the new DHCP IP on the RCC6 TFT and open it in your browser."]
+    : ["Wait for RCC6 to restart in setup AP mode.", "Reconnect this phone or computer to the RCC6 Wi-Fi shown on the TFT.", "Open 192.168.4.1 in your browser."];
+  for (const value of values) steps.append(element("li", "", value));
+  text("network-result-title", mode === "station" ? "Reconnect to your home Wi-Fi" : "Reconnect to the RCC6 setup AP");
+  const note = $("network-result-note");
+  note.replaceChildren();
+  if (mode === "station") {
+    note.append("In station mode, the browser may request HTTP Basic authentication. Use username ", element("strong", "", "meshcore"), " and the 8-letter key shown on the TFT as the password.");
+  } else {
+    note.textContent = "The TFT shows the setup Wi-Fi name and password after restart.";
+  }
+}
+
 function renderMore() {
   const self = state.self;
   const device = state.device;
@@ -484,6 +810,7 @@ function renderMore() {
   text("app-version", __APP_VERSION__);
   text("library-version", __MESHCORE_JS_VERSION__);
   $("advert-button").disabled = !state.connected;
+  $("clear-history-button").disabled = !state.messages.length;
 }
 
 function renderAll() {
@@ -491,7 +818,7 @@ function renderAll() {
     const volts = `${(state.battery / 1000).toFixed(2)} V`;
     text("battery-chip", volts);
   }
-  renderHome(); renderMessages(); renderNearby(); renderRadio(); renderMore();
+  renderHome(); renderMessages(); renderNearby(); renderRadio(); renderNetwork(); renderMore();
 }
 
 function showView(view) {
@@ -512,17 +839,17 @@ async function sendMessage(event) {
   const info = targetInfo(state.selected);
   if (!messageText || !info) return;
   if (encoder.encode(messageText).length > MAX_MESSAGE_BYTES) return toast("Message is over 140 bytes", "error");
-  const outgoing = { key: state.selected, text: messageText, timestamp: Math.floor(Date.now() / 1000), direction: "out", status: "sending", unread: false };
-  addMessage(outgoing);
+  const outgoing = addMessage({ key: state.selected, text: messageText, timestamp: Math.floor(Date.now() / 1000), direction: "out", status: "sending", unread: false });
   input.value = ""; updateComposeCount();
   try {
-    await exclusive(() => info.channel ? connection.sendChannelTextMessage(info.channel.channelIdx, messageText) : connection.sendTextMessage(info.contact.publicKey, messageText));
-    const stored = state.messages.find((item) => item.key === outgoing.key && item.text === outgoing.text && item.status === "sending");
-    if (stored) stored.status = "queued";
+    const response = await exclusive(() => info.channel ? connection.sendChannelTextMessage(info.channel.channelIdx, messageText) : connection.sendTextMessage(info.contact.publicKey, messageText));
+    outgoing.status = "queued";
+    if (!info.channel && Number.isInteger(response?.expectedAckCrc)) outgoing.expectedAckCrc = response.expectedAckCrc;
+    persistHistory();
     toast("Message queued");
   } catch {
-    const stored = state.messages.find((item) => item.key === outgoing.key && item.text === outgoing.text && item.status === "sending");
-    if (stored) stored.status = "failed";
+    outgoing.status = "failed";
+    persistHistory();
     toast("Message failed", "error");
   }
   renderMessages();
@@ -534,30 +861,44 @@ function updateComposeCount() {
   $("compose-count").className = count > MAX_MESSAGE_BYTES ? "error" : "";
 }
 
-connection.on("connected", () => {
-  setLink("connected");
-  toast("RCC6 connected");
-  setTimeout(() => $("boot").classList.add("hidden"), 220);
-  exclusive(syncAll).catch(() => toast("Initial sync failed", "error"));
-});
-connection.on("disconnected", () => setLink("offline"));
-connection.on("transport-state", () => { setLink("reconnecting"); toast("Link interrupted — reconnecting", "warn"); });
-connection.on("transport-restored", () => { toast("Link restored — resyncing"); setTimeout(() => location.reload(), 450); });
-connection.on(Constants.PushCodes.MsgWaiting, () => exclusive(syncMessages).catch(() => toast("Message sync failed", "error")));
-connection.on(Constants.PushCodes.NewAdvert, (advert) => {
-  const existing = state.contacts.findIndex((item) => hex(item.publicKey) === hex(advert.publicKey));
-  if (existing >= 0) state.contacts[existing] = advert; else state.contacts.unshift(advert);
-  refreshNearbyFromContacts(); renderAll(); toast(`${advert.advName || "A node"} is nearby`, "warn");
-});
-connection.on(Constants.PushCodes.Advert, () => exclusive(refreshContacts).catch(() => {}));
-connection.on(Constants.PushCodes.SendConfirmed, () => {
-  const pending = [...state.messages].reverse().find((item) => item.direction === "out" && item.key.startsWith("dm:") && item.status === "queued");
-  if (pending) { pending.status = "delivered"; renderMessages(); toast("Direct message delivered"); }
-});
-connection.on(Constants.PushCodes.LogRxData, (sample) => {
-  state.radio = { ...(state.radio || {}), lastRssi: sample.lastRssi, lastSnr: sample.lastSnr };
-  state.rfSamples.push(sample.lastRssi); state.rfSamples = state.rfSamples.slice(-36); renderHome(); renderRadio();
-});
+function bindConnectionEvents(radio) {
+  radio.on(Constants.ResponseCodes.ContactMsgRecv, (message) => { unannouncedMessages += ingestWaiting({ contactMessage: message }); });
+  radio.on(Constants.ResponseCodes.ChannelMsgRecv, (message) => { unannouncedMessages += ingestWaiting({ channelMessage: message }); });
+  radio.on("connected", () => {
+    if (!radio.ready || !radio.ownsLease()) return;
+    setLink("connected");
+    toast("RCC6 connected");
+    setTimeout(() => $("boot").classList.add("hidden"), 220);
+    exclusive(syncAll).then(() => { recoveryAttempts = 0; }).catch(() => toast("Initial sync failed", "error"));
+  });
+  radio.on("disconnected", () => setLink("offline"));
+  radio.on("transport-busy", () => {
+    setLink("busy");
+    $("boot").classList.add("hidden");
+    toast("Another tab controls this radio. Close it, then tap the link status to retry.", "warn");
+  });
+  radio.on("transport-state", () => { setLink("reconnecting"); toast("Link interrupted — reconnecting", "warn"); });
+  radio.on("transport-restored", () => {
+    setLink("connected");
+    toast("Link restored — resyncing");
+    exclusive(syncAll).then(() => { recoveryAttempts = 0; }).catch(() => toast("Resync failed", "error"));
+  });
+  radio.on(Constants.PushCodes.MsgWaiting, () => { if (radio.ready) exclusive(syncMessages).catch(() => toast("Message sync failed", "error")); });
+  radio.on(Constants.PushCodes.NewAdvert, (advert) => {
+    const existing = state.contacts.findIndex((item) => hex(item.publicKey) === hex(advert.publicKey));
+    if (existing >= 0) state.contacts[existing] = advert; else state.contacts.unshift(advert);
+    refreshNearbyFromContacts(); renderAll(); toast(`${advert.advName || "A node"} is nearby`, "warn");
+  });
+  radio.on(Constants.PushCodes.Advert, () => { if (radio.ready) exclusive(refreshContacts).catch(() => {}); });
+  radio.on(Constants.PushCodes.SendConfirmed, (confirmation) => {
+    const pending = [...state.messages].reverse().find((item) => item.direction === "out" && item.key.startsWith("dm:") && item.status === "queued" && item.expectedAckCrc === confirmation.ackCode);
+    if (pending) { pending.status = "delivered"; persistHistory(); renderMessages(); toast("Direct message delivered"); }
+  });
+  radio.on(Constants.PushCodes.LogRxData, (sample) => {
+    state.radio = { ...(state.radio || {}), lastRssi: sample.lastRssi, lastSnr: sample.lastSnr };
+    state.rfSamples.push(sample.lastRssi); state.rfSamples = state.rfSamples.slice(-36); renderHome(); renderRadio();
+  });
+}
 
 document.querySelectorAll(".nav button").forEach((button) => button.addEventListener("click", () => showView(button.dataset.view)));
 document.querySelectorAll("[data-open]").forEach((button) => button.addEventListener("click", () => showView(button.dataset.open)));
@@ -572,10 +913,73 @@ $("advert-button").addEventListener("click", async () => {
   catch { toast("Advert failed", "error"); }
   finally { $("advert-button").disabled = false; }
 });
-$("connect-button").addEventListener("click", () => state.connected ? exclusive(syncAll).catch(() => toast("Sync failed", "error")) : location.reload());
+$("connect-button").addEventListener("click", () => {
+  recoveryAttempts = 0;
+  if (state.connected) return exclusive(syncAll).catch(() => toast("Sync failed", "error"));
+  return connection.connect().catch(() => toast("Could not reconnect", "error"));
+});
+$("network-setup-button").addEventListener("click", openNetworkDialog);
+$("network-dialog-close").addEventListener("click", closeNetworkDialog);
+$("network-cancel").addEventListener("click", closeNetworkDialog);
+$("network-done").addEventListener("click", closeNetworkDialog);
+$("network-reveal").addEventListener("click", () => {
+  const password = $("network-password");
+  const revealed = password.type === "password";
+  password.type = revealed ? "text" : "password";
+  $("network-reveal").textContent = revealed ? "Hide" : "Show";
+  $("network-reveal").setAttribute("aria-pressed", String(revealed));
+});
+$("network-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const ssid = $("network-ssid").value;
+  const password = $("network-password").value;
+  const ssidBytes = encoder.encode(ssid).length;
+  const passwordBytes = encoder.encode(password).length;
+  if (ssidBytes < 1 || ssidBytes > 32) { toast("Wi-Fi name must be 1–32 bytes", "error"); return $("network-ssid").focus(); }
+  if (passwordBytes !== 0 && (passwordBytes < 8 || passwordBytes > 64)) { toast("Password must be empty or 8–64 bytes", "error"); return $("network-password").focus(); }
+  $("network-save").disabled = true;
+  try {
+    await setNetwork({ mode: "station", ssid, password });
+    showNetworkResult("station");
+    toast("Local Wi-Fi saved. RCC6 is restarting.", "warn");
+  } catch { toast("Could not save Wi-Fi settings", "error"); }
+  finally { $("network-save").disabled = false; }
+});
+$("return-ap-button").addEventListener("click", async () => {
+  if (!confirm("Return RCC6 to setup AP mode? The device will restart.")) return;
+  $("return-ap-button").disabled = true;
+  try {
+    await setNetwork({ mode: "ap" });
+    openNetworkDialog();
+    showNetworkResult("ap");
+    toast("Setup AP requested. RCC6 is restarting.", "warn");
+  } catch { toast("Could not return to setup AP", "error"); }
+  finally { $("return-ap-button").disabled = false; }
+});
+$("clear-history-button").addEventListener("click", () => {
+  if (!state.messages.length || !confirm("Clear locally stored message history for this node?")) return;
+  try { localStorage.removeItem(historyKey()); } catch { /* storage is optional */ }
+  state.messages = [];
+  renderAll();
+  toast("Local message history cleared");
+});
 window.addEventListener("resize", () => state.view === "radio" && drawSignalChart());
-document.addEventListener("visibilitychange", () => { if (!document.hidden && state.connected) exclusive(refreshStats).catch(() => {}); });
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && state.connected) exclusive(async () => {
+    await syncMessages();
+    await refreshStats();
+    await refreshNetworkStatus();
+  }).catch(() => toast("Foreground sync failed", "error"));
+});
+window.addEventListener("pagehide", () => connection.leavePage());
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted && !connection.running) {
+    setLink("reconnecting");
+    connection.connect().catch(() => toast("Could not reconnect", "error"));
+  }
+});
 
+bindConnectionEvents(connection);
 renderAll();
 setInterval(() => { text("hero-uptime", formatSession()); if (!document.hidden && state.connected) exclusive(refreshStats).catch(() => {}); }, 30000);
 connection.connect().catch(() => { setLink("offline"); $("boot").classList.add("hidden"); toast("Could not open companion link", "error"); });

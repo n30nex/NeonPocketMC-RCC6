@@ -58,6 +58,12 @@
           </div>
         </article>
 
+        <article class="card network-banner">
+          <div class="network-icon" aria-hidden="true"><svg><use href="#i-near"/></svg></div>
+          <div><p class="eyebrow">LOCAL CONNECTION</p><h3 id="network-title">Set up local Wi-Fi</h3><p id="network-summary">Use your 2.4 GHz home network instead of staying on the RCC6 setup hotspot.</p></div>
+          <button class="primary-button" id="network-setup-button">Set up local Wi-Fi</button>
+        </article>
+
         <div class="dashboard-grid">
           <article class="card feature-card accent-yellow">
             <div class="card-head"><div><p class="eyebrow">INBOX</p><h3>Unread messages</h3></div><span class="count" id="home-unread">0</span></div>
@@ -140,13 +146,33 @@
           </article>
           <div class="settings-stack">
             <article class="card action-card"><div><p class="eyebrow">PRESENCE</p><h3>Advertise this node</h3><p>Queue a flood advert so nearby MeshCore nodes can discover you.</p></div><button class="primary-button" id="advert-button">Advert now</button></article>
-            <article class="card action-card"><div><p class="eyebrow">CONNECTION</p><h3>RCC6 SoftAP</h3><p id="ap-address">Connected through this device at 192.168.4.1</p></div><button class="secondary-button" id="refresh-button">Sync now</button></article>
+            <article class="card action-card"><div><p class="eyebrow">CONNECTION</p><h3 id="more-network-title">RCC6 setup AP</h3><p id="ap-address">Connected through this device at 192.168.4.1</p></div><div class="action-buttons"><button class="secondary-button" id="refresh-button">Sync now</button><button class="secondary-button danger-button" id="return-ap-button" hidden>Return to setup AP</button></div></article>
+            <article class="card action-card"><div><p class="eyebrow">PRIVACY</p><h3>Local message history</h3><p>Up to 120 messages are kept in this browser for this node. Clear them whenever you like.</p></div><button class="secondary-button" id="clear-history-button">Clear history</button></article>
             <article class="card about-card"><div><p class="eyebrow">ABOUT</p><h3>MeshCore Web</h3><p>Offline companion UI · v<span id="app-version">—</span><br>Powered by MeshCore.js <span id="library-version">—</span> · MIT © Liam Cottle</p></div></article>
           </div>
         </div>
       </section>
     </main>
   </div>
+
+  <dialog class="network-dialog" id="network-dialog" aria-labelledby="network-dialog-title">
+    <div class="dialog-head"><div><p class="eyebrow">RCC6 NETWORK</p><h2 id="network-dialog-title">Set up local Wi-Fi</h2></div><button type="button" class="dialog-close" id="network-dialog-close" aria-label="Close network setup">×</button></div>
+    <div class="network-current"><span class="status-dot connected"></span><div><small>CURRENT CONNECTION</small><strong id="network-current">Checking RCC6…</strong></div></div>
+    <form id="network-form">
+      <label for="network-ssid">2.4 GHz Wi-Fi name</label>
+      <input id="network-ssid" name="ssid" type="text" required maxlength="32" autocomplete="off" placeholder="Home Wi-Fi">
+      <label for="network-password">Wi-Fi password</label>
+      <div class="password-row"><input id="network-password" name="password" type="password" maxlength="64" autocomplete="new-password" placeholder="Leave empty for an open network"><button type="button" id="network-reveal" aria-pressed="false">Show</button></div>
+      <p class="field-help">SSID: 1–32 bytes. Password: empty, or 8–64 characters. RCC6 supports 2.4 GHz networks only.</p>
+      <div class="dialog-actions"><button type="button" class="secondary-button" id="network-cancel">Cancel</button><button type="submit" class="primary-button" id="network-save">Save & restart</button></div>
+    </form>
+    <div class="network-result" id="network-result" hidden>
+      <p class="eyebrow">NEXT STEPS</p><h3 id="network-result-title">Reconnect to your home Wi-Fi</h3>
+      <ol id="network-result-steps"><li>Wait for RCC6 to restart.</li><li>Reconnect this phone or computer to your home Wi-Fi.</li><li>Read the new DHCP IP on the RCC6 TFT and open it in your browser.</li></ol>
+      <p id="network-result-note">In station mode, the browser may request HTTP Basic authentication. Use username <strong>meshcore</strong> and the 8-letter key shown on the TFT as the password.</p>
+      <button type="button" class="primary-button" id="network-done">Got it</button>
+    </div>
+  </dialog>
 
   <div class="toast-stack" id="toasts" aria-live="polite"></div>
   <div class="boot" id="boot"><span class="brand-mark large"><i></i></span><strong>MeshCore</strong><small>Connecting to RCC6…</small><div class="boot-line"><i></i></div></div>

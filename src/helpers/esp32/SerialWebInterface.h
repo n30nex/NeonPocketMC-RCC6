@@ -21,11 +21,19 @@ public:
   const char* getApSsid() const { return _ap_ssid; }
   const char* getApPassword() const { return _ap_password; }
   IPAddress getApIP() const;
+  bool isStationMode() const { return _station_active; }
+  const char* getCurrentSsid() const;
+  IPAddress getCurrentIP() const { return _current_ip; }
+  bool isFallbackActive() const { return _fallback_active; }
+  bool selectSetupAp();
+  bool clearStoredNetworkConfig();
 
 private:
   static constexpr uint8_t FRAME_QUEUE_SIZE = 8;
   static constexpr uint32_t HTTP_SESSION_TIMEOUT_MS = 10000;
   static constexpr uint32_t HTTP_BODY_TIMEOUT_MS = 250;
+  static constexpr uint32_t STA_CONNECT_TIMEOUT_MS = 15000;
+  static constexpr uint32_t RESTART_DELAY_MS = 750;
   static constexpr size_t TCP_READ_BUDGET = 384;
 
   struct Frame {
@@ -49,7 +57,9 @@ private:
 
   enum class Session : uint8_t { NONE, TCP, HTTP };
   enum class TcpRxState : uint8_t { MARKER, LENGTH_LOW, LENGTH_HIGH, PAYLOAD };
-  enum class HttpPostResult : uint8_t { NONE, PENDING, ACCEPTED, INVALID, CONFLICT, FULL, ABORTED };
+  enum class HttpPostResult : uint8_t {
+    NONE, PENDING, ACCEPTED, INVALID, UNAUTHORIZED, FORBIDDEN, CONFLICT, FULL, ABORTED
+  };
 
   bool _initialized;
   bool _enabled;
@@ -58,6 +68,13 @@ private:
   uint16_t _tcp_port;
   char _ap_ssid[33];
   char _ap_password[9];
+  bool _prefer_station;
+  bool _station_active;
+  bool _fallback_active;
+  char _station_ssid[33];
+  char _station_password[65];
+  IPAddress _current_ip;
+  uint32_t _restart_at;
 
   WiFiServer _tcp_server;
   WiFiClient _tcp_client;
@@ -87,6 +104,11 @@ private:
 
   void configureIdentity(const char* node_name);
   void registerHttpRoutes();
+  bool startAccessPoint();
+  void startServers();
+  bool httpAuthorized();
+  bool saveNetworkConfig(bool station, const String& ssid, const String& password);
+  void scheduleRestart();
   void clearSession();
   void resetTcpParser();
   void expireHttpSession();
@@ -103,5 +125,7 @@ private:
   void handleHttpGetFrame();
   void handleHttpPostFrame();
   void handleHttpPostRaw();
+  void handleHttpGetNetwork();
+  void handleHttpPostNetwork();
   void sendHttpStatus(int status);
 };
