@@ -799,3 +799,21 @@ void NV3001BDisplay::endFrame() {
   flushFramebuffer();
 #endif
 }
+
+#if NV3001B_USE_FRAMEBUFFER && defined(NEONPOCKET_SCREEN_CAPTURE)
+size_t NV3001BDisplay::writeFramebuffer(Print& output) const {
+  if (!framebuffer) return 0;
+
+  const uint8_t* bytes = reinterpret_cast<const uint8_t*>(framebuffer);
+  const size_t total = (size_t)NV3001B_SCREEN_WIDTH * NV3001B_SCREEN_HEIGHT * sizeof(uint16_t);
+  size_t sent = 0;
+  while (sent < total) {
+    const size_t chunk = total - sent > 512 ? 512 : total - sent;
+    const size_t written = output.write(bytes + sent, chunk);
+    if (written == 0) break;
+    sent += written;
+    delay(1);
+  }
+  return sent;
+}
+#endif

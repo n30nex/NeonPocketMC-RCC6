@@ -164,6 +164,9 @@ public:
   int16_t getCachedNoiseFloor() const { return _cached_noise_floor; }
   void requestRefresh() { _next_refresh = 0; }
 #endif
+#ifdef NEONPOCKET_SCREEN_CAPTURE
+  bool diagnosticSetPage(uint8_t page);
+#endif
 #endif
   bool hasDisplay() const { return _display != NULL; }
   bool isButtonPressed() const;

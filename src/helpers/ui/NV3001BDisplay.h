@@ -129,4 +129,7 @@ public:
   void drawXbm(int x, int y, const uint8_t* bits, int w, int h) override;
   uint16_t getTextWidth(const char* str) override;
   void endFrame() override;
+#if NV3001B_USE_FRAMEBUFFER && defined(NEONPOCKET_SCREEN_CAPTURE)
+  size_t writeFramebuffer(Print& output) const;
+#endif
 };

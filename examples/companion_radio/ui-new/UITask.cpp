@@ -739,6 +739,21 @@ class HomeScreen : public UIScreen {
 #endif
 
 public:
+#ifdef NEONPOCKET_SCREEN_CAPTURE
+  bool diagnosticSetPage(uint8_t page) {
+    if (page >= HomePage::Count) return false;
+    _page = page;
+    _shutdown_init = false;
+    _transition_dir = 0;
+    _transition_started = 0;
+    _transition_pending = false;
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+    if (_page == HomePage::QUICK_REPLY) startQuickReplyScan();
+    else _quick_reply_confirm = false;
+#endif
+    return true;
+  }
+#endif
 #ifdef NEONPOCKET_UI
   void neonRequestShutdown() {
     _page = HomePage::SHUTDOWN;
@@ -1686,6 +1701,18 @@ void UITask::setCurrScreen(UIScreen* c) {
   curr = c;
   _next_refresh = 100;
 }
+
+#ifdef NEONPOCKET_SCREEN_CAPTURE
+bool UITask::diagnosticSetPage(uint8_t page) {
+  if (_display == NULL || home == NULL) return false;
+  if (!_display->isOn()) _display->turnOn();
+  if (!static_cast<HomeScreen*>(home)->diagnosticSetPage(page)) return false;
+  setCurrScreen(home);
+  _auto_off = millis() + AUTO_OFF_MILLIS;
+  _next_refresh = 0;
+  return true;
+}
+#endif
 
 /*
   hardware-agnostic pre-shutdown activity should be done here

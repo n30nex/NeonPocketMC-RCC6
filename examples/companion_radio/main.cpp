@@ -411,12 +411,66 @@ void setup() {
 #endif
 }
 
+#ifdef NEONPOCKET_SCREEN_CAPTURE
+static char capture_command[24];
+static uint8_t capture_command_len = 0;
+
+static void handleScreenCaptureCommand(const char* command) {
+  if (strcmp(command, "NP PING") == 0) {
+    Serial.println("NPOK PONG");
+    return;
+  }
+
+  if (strncmp(command, "NP PAGE ", 8) == 0 &&
+      command[8] >= '0' && command[8] <= '9' && command[9] == 0) {
+    const uint8_t page = command[8] - '0';
+    if (ui_task.diagnosticSetPage(page)) {
+      Serial.print("NPOK PAGE ");
+      Serial.println(page);
+    } else {
+      Serial.println("NPERR PAGE");
+    }
+    return;
+  }
+
+  if (strcmp(command, "NP CAPTURE") == 0) {
+    Serial.println("NPFB 220 128 56320 LE_RGB565");
+    const size_t sent = display.writeFramebuffer(Serial);
+    Serial.print("\nNPEND ");
+    Serial.println((unsigned)sent);
+    Serial.flush();
+    return;
+  }
+
+  Serial.println("NPERR COMMAND");
+}
+
+static void pollScreenCaptureCommands() {
+  while (Serial.available()) {
+    const char c = (char)Serial.read();
+    if (c == '\r') continue;
+    if (c == '\n') {
+      capture_command[capture_command_len] = 0;
+      if (capture_command_len > 0) handleScreenCaptureCommand(capture_command);
+      capture_command_len = 0;
+    } else if (capture_command_len + 1 < sizeof(capture_command)) {
+      capture_command[capture_command_len++] = c;
+    } else {
+      capture_command_len = 0;
+    }
+  }
+}
+#endif
+
 void loop() {
   the_mesh.loop();
   interface_manager.loop();
   sensors.loop();
 #ifdef DISPLAY_CLASS
   ui_task.loop();
+#endif
+#ifdef NEONPOCKET_SCREEN_CAPTURE
+  pollScreenCaptureCommands();
 #endif
   rtc_clock.tick();
 #ifdef HAS_EXTERNAL_WATCHDOG
