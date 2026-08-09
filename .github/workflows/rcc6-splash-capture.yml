@@ -1,0 +1,58 @@
+name: RCC6 Splash Capture Diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v4
+
+      - name: Verify checkout
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+
+      - name: Set up build environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Verify diagnostic isolation
+        shell: bash
+        run: |
+          pio project config --json-output > /tmp/platformio.json
+          python - <<'PY'
+          import json
+          sections = {name: dict(options) for name, options in json.load(open('/tmp/platformio.json'))}
+          macro = '-D NEONPOCKET_SPLASH_CAPTURE=1'
+          assert macro in sections['env:heltec_rcc6_diagnostic_splash_capture']['build_flags']
+          assert macro not in sections['env:heltec_rcc6_companion_radio_ble']['build_flags']
+          assert macro not in sections['env:heltec_rcc6_companion_radio_web_ap']['build_flags']
+          PY
+
+      - name: Build diagnostic image
+        run: pio run -e heltec_rcc6_diagnostic_splash_capture -t mergebin
+
+      - name: Verify diagnostic-only image
+        shell: bash
+        run: |
+          out=.pio/build/heltec_rcc6_diagnostic_splash_capture
+          test -s "$out/firmware.bin"
+          test -s "$out/firmware-merged.bin"
+          test -s "$out/firmware.elf"
+          sha256sum "$out/firmware.bin" "$out/firmware-merged.bin" > "$out/SHA256SUMS"
+
+      - name: Upload diagnostic image
+        uses: actions/upload-artifact@v4
+        with:
+          name: rcc6-splash-capture-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            .pio/build/heltec_rcc6_diagnostic_splash_capture/firmware.bin
+            .pio/build/heltec_rcc6_diagnostic_splash_capture/firmware-merged.bin
+            .pio/build/heltec_rcc6_diagnostic_splash_capture/firmware.elf
+            .pio/build/heltec_rcc6_diagnostic_splash_capture/SHA256SUMS

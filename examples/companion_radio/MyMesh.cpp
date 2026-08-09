@@ -2078,9 +2078,13 @@ void MyMesh::saveContacts() {
 }
 
 void MyMesh::enterCLIRescue() {
+#ifdef NEONPOCKET_SPLASH_CAPTURE
+  return;  // USB CDC is reserved for the diagnostic framebuffer protocol.
+#else
   _cli_rescue = true;
   cli_command[0] = 0;
   Serial.println("========= CLI Rescue =========");
+#endif
 }
 
 void MyMesh::checkCLIRescueCmd() {

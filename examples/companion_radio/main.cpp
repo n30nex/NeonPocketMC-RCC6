@@ -420,12 +420,109 @@ void setup() {
 #endif
 }
 
+#ifdef NEONPOCKET_SPLASH_CAPTURE
+static char splash_capture_command[32];
+static uint8_t splash_capture_command_len = 0;
+static bool splash_capture_discard_line = false;
+
+static uint32_t splashCaptureCrc32(const uint8_t* data, size_t length) {
+  uint32_t crc = 0xFFFFFFFFu;
+  while (length--) {
+    crc ^= *data++;
+    for (uint8_t bit = 0; bit < 8; bit++) {
+      crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
+    }
+  }
+  return ~crc;
+}
+
+static void writeSplashCapture(uint32_t elapsed) {
+  char version[12];
+  NeonPocketSplash::shortVersion(version, sizeof(version), FIRMWARE_VERSION);
+  display.startFrame();
+  NeonPocketSplash::drawFrame(display, elapsed, version, FIRMWARE_BUILD_DATE);
+  display.endFrame();
+
+  size_t length = 0;
+  const uint8_t* bytes = display.diagnosticFramebuffer(length);
+  if (bytes == nullptr || length != 220u * 128u * sizeof(uint16_t)) {
+    Serial.println("NPERR FRAMEBUFFER");
+    return;
+  }
+
+  const uint32_t crc = splashCaptureCrc32(bytes, length);
+  Serial.printf("NPFB 220 128 %u RGB565LE %08lX\n",
+      (unsigned)length, (unsigned long)crc);
+  unsigned long stalled_at = millis();
+  for (size_t sent = 0; sent < length;) {
+    const size_t remaining = length - sent;
+    const size_t chunk = remaining < 512 ? remaining : 512;
+    const size_t written = Serial.write(bytes + sent, chunk);
+    if (written == 0) {
+      if (millis() - stalled_at > 5000) return;
+      delay(1);
+      continue;
+    }
+    sent += written;
+    stalled_at = millis();
+    yield();
+  }
+  Serial.printf("\nNPEND %u %08lX\n", (unsigned)length, (unsigned long)crc);
+  Serial.flush();
+}
+
+static void handleSplashCaptureCommand(const char* command) {
+  if (strcmp(command, "NP PING") == 0) {
+    Serial.printf("NPOK SPLASH_CAPTURE 220 128 56320 RGB565LE %lu %lu\n",
+        NeonPocketSplash::DURATION_MILLIS, NeonPocketSplash::FRAME_MILLIS);
+    return;
+  }
+
+  static const char prefix[] = "NP SPLASH ";
+  if (strncmp(command, prefix, sizeof(prefix) - 1) != 0) {
+    Serial.println("NPERR COMMAND");
+    return;
+  }
+  char* end = nullptr;
+  const unsigned long elapsed = strtoul(command + sizeof(prefix) - 1, &end, 10);
+  if (end == command + sizeof(prefix) - 1 || *end != 0 ||
+      elapsed > NeonPocketSplash::DURATION_MILLIS) {
+    Serial.println("NPERR ELAPSED");
+    return;
+  }
+  writeSplashCapture(elapsed);
+}
+
+static void pollSplashCaptureCommands() {
+  while (Serial.available()) {
+    const char c = (char)Serial.read();
+    if (c == '\r') continue;
+    if (c == '\n') {
+      if (!splash_capture_discard_line && splash_capture_command_len != 0) {
+        splash_capture_command[splash_capture_command_len] = 0;
+        handleSplashCaptureCommand(splash_capture_command);
+      }
+      splash_capture_command_len = 0;
+      splash_capture_discard_line = false;
+    } else if (!splash_capture_discard_line &&
+        splash_capture_command_len + 1 < sizeof(splash_capture_command)) {
+      splash_capture_command[splash_capture_command_len++] = c;
+    } else {
+      splash_capture_discard_line = true;
+    }
+  }
+}
+#endif
+
 void loop() {
   the_mesh.loop();
   interface_manager.loop();
   sensors.loop();
 #ifdef DISPLAY_CLASS
   ui_task.loop();
+#endif
+#ifdef NEONPOCKET_SPLASH_CAPTURE
+  pollSplashCaptureCommands();
 #endif
   rtc_clock.tick();
 #ifdef HAS_EXTERNAL_WATCHDOG
