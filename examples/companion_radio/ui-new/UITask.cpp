@@ -1120,9 +1120,17 @@ class MsgPreviewScreen : public UIScreen {
 
   size_t renderMessagePage(DisplayDriver& display, const char* text, size_t offset) {
     static constexpr size_t chars_per_line = 33;
-    static constexpr int lines_per_page = 7;
+    static constexpr int first_line_y = 48;
+    static constexpr int line_height = 15;
+    static constexpr int glyph_height = 14;
+    static constexpr int card_bottom = 107;
+    static constexpr int lines_per_page = 4;
+    static_assert(first_line_y + (lines_per_page - 1) * line_height + glyph_height <= card_bottom,
+        "Inbox lines must fit inside the message card");
     const size_t text_len = strlen(text);
     size_t pos = offset > text_len ? 0 : offset;
+
+    display.setTextSize(1);
 
     for (int line_num = 0; line_num < lines_per_page && pos < text_len; line_num++) {
       while (pos < text_len && (text[pos] == ' ' || text[pos] == '\t' || text[pos] == '\r')) pos++;
@@ -1155,7 +1163,7 @@ class MsgPreviewScreen : public UIScreen {
       const size_t line_len = line_end - line_start;
       memcpy(line, text + line_start, line_len);
       line[line_len] = 0;
-      display.setCursor(10, 49 + line_num * 8);
+      display.setCursor(10, first_line_y + line_num * line_height);
       display.print(line);
       pos = next;
     }
