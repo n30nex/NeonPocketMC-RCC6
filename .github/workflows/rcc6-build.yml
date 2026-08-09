@@ -14,6 +14,10 @@ permissions:
   contents: read
 
 jobs:
+  diagnostic-splash-capture:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/rcc6-splash-capture.yml
+
   webui:
     runs-on: ubuntu-latest
     defaults:

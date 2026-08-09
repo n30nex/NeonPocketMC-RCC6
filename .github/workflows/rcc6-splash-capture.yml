@@ -2,6 +2,7 @@ name: RCC6 Splash Capture Diagnostic
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
