@@ -136,6 +136,9 @@ public:
     curr = NULL;
   }
   void begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* node_prefs);
+#if defined(ULTIMATE_CAPTURE_DIAGNOSTIC)
+  bool diagnosticInput(char input);
+#endif
 
   void gotoHomeScreen() { setCurrScreen(home); }
 #ifdef NEONPOCKET_UI

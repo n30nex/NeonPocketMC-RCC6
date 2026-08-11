@@ -348,6 +348,27 @@ void NV3001BDisplay::writeColor(uint16_t rgb, uint32_t count) {
 }
 
 #if NV3001B_USE_FRAMEBUFFER
+#if defined(ULTIMATE_CAPTURE_DIAGNOSTIC)
+bool NV3001BDisplay::copyFramebufferRowRgb565(
+    uint16_t y, uint16_t* output, size_t pixel_count) const {
+  if (framebuffer == nullptr || output == nullptr || y >= NV3001B_SCREEN_HEIGHT ||
+      pixel_count < NV3001B_SCREEN_WIDTH) {
+    return false;
+  }
+  const size_t offset = static_cast<size_t>(y) * NV3001B_SCREEN_WIDTH;
+#if NV3001B_USE_INDEXED_FRAMEBUFFER
+  for (uint16_t x = 0; x < NV3001B_SCREEN_WIDTH; ++x) {
+    const uint8_t index = framebuffer[offset + x];
+    if (index >= framebuffer_palette_size) return false;
+    output[x] = framebuffer_palette[index];
+  }
+#else
+  memcpy(output, framebuffer + offset, NV3001B_SCREEN_WIDTH * sizeof(uint16_t));
+#endif
+  return true;
+}
+#endif
+
 #if NV3001B_USE_INDEXED_FRAMEBUFFER
 bool NV3001BDisplay::framebufferPaletteIndex(uint16_t rgb, uint8_t& index) {
   for (uint16_t i = 0; i < framebuffer_palette_size; i++) {

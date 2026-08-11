@@ -502,6 +502,125 @@ void setup() {
 #endif
 }
 
+#if defined(ULTIMATE_CAPTURE_DIAGNOSTIC)
+static char ultimate_capture_command[32] = {};
+static uint8_t ultimate_capture_command_length = 0;
+
+static uint32_t updateCaptureCrc32(uint32_t crc, const uint8_t* data, size_t length) {
+  while (length-- != 0) {
+    crc ^= *data++;
+    for (uint8_t bit = 0; bit < 8; ++bit) {
+      crc = (crc >> 1) ^ (0xEDB88320UL & (0UL - (crc & 1UL)));
+    }
+  }
+  return crc;
+}
+
+static void writeUltimateFramebuffer() {
+  if (!display.framebufferReady()) {
+    Serial.println("NPERR FRAMEBUFFER");
+    return;
+  }
+  uint16_t row[NV3001B_SCREEN_WIDTH];
+  uint32_t crc = 0xFFFFFFFFUL;
+  for (uint16_t y = 0; y < NV3001B_SCREEN_HEIGHT; ++y) {
+    if (!display.copyFramebufferRowRgb565(y, row, NV3001B_SCREEN_WIDTH)) {
+      Serial.println("NPERR FRAMEBUFFER");
+      return;
+    }
+    crc = updateCaptureCrc32(crc, reinterpret_cast<const uint8_t*>(row), sizeof(row));
+  }
+  crc ^= 0xFFFFFFFFUL;
+  const size_t byte_count = NV3001B_SCREEN_WIDTH * NV3001B_SCREEN_HEIGHT * sizeof(uint16_t);
+  Serial.printf("NPFB %u %u %u RGB565LE %08lX\n", NV3001B_SCREEN_WIDTH,
+                NV3001B_SCREEN_HEIGHT, static_cast<unsigned>(byte_count),
+                static_cast<unsigned long>(crc));
+  for (uint16_t y = 0; y < NV3001B_SCREEN_HEIGHT; ++y) {
+    display.copyFramebufferRowRgb565(y, row, NV3001B_SCREEN_WIDTH);
+    const uint8_t* bytes = reinterpret_cast<const uint8_t*>(row);
+    size_t sent = 0;
+    while (sent < sizeof(row)) {
+      sent += Serial.write(bytes + sent, sizeof(row) - sent);
+      delay(1);
+    }
+  }
+  Serial.printf("\nNPEND %u %08lX\n", static_cast<unsigned>(byte_count),
+                static_cast<unsigned long>(crc));
+  Serial.flush();
+}
+
+static void loadUltimateCaptureDemo() {
+  ultimate_service.clearHistory();
+  const uint32_t now = rtc_clock.getCurrentTime();
+  const uint8_t aurora_key[6] = {0xA8, 0x44, 0x21, 0x7E, 0x32, 0x10};
+  const uint8_t public_key[6] = {0xC2, 0x10, 0x55, 0x81, 0xA7, 0x02};
+  const uint8_t bot_key[6] = {0xB0, 0x71, 0x06, 0x43, 0x22, 0x19};
+  const uint8_t summit_key[6] = {0x5A, 0x91, 0x72, 0x13, 0xE4, 0x08};
+
+  ultimate_service.enqueueMessage(UltimateMessageKind::Channel, true, 0, public_key,
+      "#Public", "Road check complete. Coverage is excellent along the north trail.",
+      now > 94 ? now - 94 : now, 1, -82, 31);
+  ultimate_service.enqueueMessage(UltimateMessageKind::Direct, true, 0, aurora_key,
+      "Aurora", "Meet at the lookout at 19:30. Bring the spare antenna.",
+      now > 41 ? now - 41 : now, 0, -71, 38);
+  ultimate_service.enqueueMessage(UltimateMessageKind::Channel, true, 1, bot_key,
+      "#bot", "Repeater health: 128 packets received, zero errors.",
+      now > 16 ? now - 16 : now, 2, -96, 19);
+  ultimate_service.enqueueMessage(UltimateMessageKind::Direct, false, 0, aurora_key,
+      "Aurora", "On my way. ETA ten minutes.", now, 0, 0, 0);
+
+  ultimate_service.enqueueNode(aurora_key, "Aurora", 1, 0, now, -71, 38, true);
+  ultimate_service.enqueueNode(public_key, "North Ridge", 2, 1,
+      now > 12 ? now - 12 : now, -82, 31, true);
+  ultimate_service.enqueueNode(bot_key, "Canadaverse Bot", 1, 2,
+      now > 38 ? now - 38 : now, -96, 19, true);
+  ultimate_service.enqueueNode(summit_key, "Summit Relay", 2, 1,
+      now > 73 ? now - 73 : now, -89, 25, true);
+  ultimate_service.enqueueRadio(UltimateRadioEvent::Rx, 0, -82, 31, 0);
+  ultimate_service.enqueueRadio(UltimateRadioEvent::Rx, 0, -71, 38, 0);
+  ultimate_service.enqueueRadio(UltimateRadioEvent::Tx, 0, 0, 0, 842);
+  for (uint8_t i = 0; i < 20; ++i) ultimate_service.loop();
+  ultimate_service.refreshStatusNow();
+  ui_task.gotoHomeScreen();
+  Serial.println("NPOK DEMO");
+}
+
+static void handleUltimateCaptureCommand(const char* command) {
+  if (strcmp(command, "NP PING") == 0) {
+    Serial.println("NPOK ULTIMATE_CAPTURE 220 128 RGB565LE");
+  } else if (strcmp(command, "NP FRAME") == 0) {
+    writeUltimateFramebuffer();
+  } else if (strcmp(command, "NP NEXT") == 0) {
+    Serial.println(ui_task.diagnosticInput(KEY_NEXT) ? "NPOK NEXT" : "NPERR NEXT");
+  } else if (strcmp(command, "NP ACTION") == 0) {
+    Serial.println(ui_task.diagnosticInput(KEY_ENTER) ? "NPOK ACTION" : "NPERR ACTION");
+  } else if (strcmp(command, "NP DEMO") == 0) {
+    loadUltimateCaptureDemo();
+  } else if (strcmp(command, "NP CLEARDEMO") == 0) {
+    Serial.println(ultimate_service.clearHistory() ? "NPOK CLEARDEMO" : "NPERR CLEARDEMO");
+  } else {
+    Serial.println("NPERR COMMAND");
+  }
+}
+
+static void checkUltimateCaptureSerial() {
+  while (Serial.available() != 0) {
+    const char value = static_cast<char>(Serial.read());
+    if (value == '\r' || value == '\n') {
+      if (ultimate_capture_command_length != 0) {
+        ultimate_capture_command[ultimate_capture_command_length] = 0;
+        handleUltimateCaptureCommand(ultimate_capture_command);
+        ultimate_capture_command_length = 0;
+      }
+    } else if (ultimate_capture_command_length + 1 < sizeof(ultimate_capture_command)) {
+      ultimate_capture_command[ultimate_capture_command_length++] = value;
+    } else {
+      ultimate_capture_command_length = 0;
+    }
+  }
+}
+#endif
+
 void loop() {
   the_mesh.loop();
 #ifdef NEONPOCKET_ULTIMATE
@@ -514,6 +633,9 @@ void loop() {
   sensors.loop();
 #ifdef DISPLAY_CLASS
   ui_task.loop();
+#endif
+#if defined(ULTIMATE_CAPTURE_DIAGNOSTIC)
+  checkUltimateCaptureSerial();
 #endif
   rtc_clock.tick();
 #ifdef HAS_EXTERNAL_WATCHDOG

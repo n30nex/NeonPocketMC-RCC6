@@ -150,6 +150,9 @@ public:
   uint32_t lastFlushMicros() const { return framebuffer_last_flush_micros; }
   uint16_t lastTilesSent() const { return framebuffer_last_tiles_sent; }
   static constexpr uint16_t tileCount() { return framebuffer_tile_count; }
+#if defined(ULTIMATE_CAPTURE_DIAGNOSTIC)
+  bool copyFramebufferRowRgb565(uint16_t y, uint16_t* output, size_t pixel_count) const;
+#endif
 #endif
 
   bool isOn() override { return is_on; }
