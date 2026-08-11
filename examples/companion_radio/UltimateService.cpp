@@ -114,7 +114,7 @@ bool UltimateService::saveSettings() {
   }
   stored.crc32 = crc32(&stored, offsetof(SettingsFile, crc32));
 
-  filesystem->remove(settings_tmp_path);
+  if (!removeIfExists(settings_tmp_path)) return false;
   File file = filesystem->open(settings_tmp_path, FILE_WRITE);
   const bool written = file &&
       file.write(reinterpret_cast<const uint8_t*>(&stored), sizeof(stored)) == sizeof(stored);
@@ -123,11 +123,15 @@ bool UltimateService::saveSettings() {
     file.close();
   }
   if (!written) {
-    filesystem->remove(settings_tmp_path);
+    removeIfExists(settings_tmp_path);
     return false;
   }
-  filesystem->remove(settings_path);
+  if (!removeIfExists(settings_path)) return false;
   return filesystem->rename(settings_tmp_path, settings_path);
+}
+
+bool UltimateService::removeIfExists(const char* path) {
+  return !filesystem->exists(path) || filesystem->remove(path);
 }
 
 bool UltimateService::loadMeta() {
@@ -179,7 +183,7 @@ bool UltimateService::writeMeta() {
 }
 
 bool UltimateService::recoverJournalSwap() {
-  filesystem->remove(history_new_path);
+  if (!removeIfExists(history_new_path)) return false;
   if (!filesystem->exists(history_old_path)) return true;
 
   bool current_matches = false;
@@ -190,11 +194,10 @@ bool UltimateService::recoverJournalSwap() {
     if (current) current.close();
   }
   if (current_matches) {
-    filesystem->remove(history_old_path);
-    return true;
+    return removeIfExists(history_old_path);
   }
 
-  filesystem->remove(history_path);
+  if (!removeIfExists(history_path)) return false;
   return filesystem->rename(history_old_path, history_path);
 }
 
@@ -795,7 +798,7 @@ bool UltimateService::markRead(uint32_t sequence) {
 }
 
 bool UltimateService::clearHistory() {
-  filesystem->remove(history_path);
+  if (!removeIfExists(history_path)) return false;
   if (!ensureJournalFile(meta.capacity)) return false;
   meta.count = 0;
   meta.head = 0;
@@ -821,13 +824,13 @@ bool UltimateService::setHistoryCapacity(uint16_t capacity) {
   }
 
   const uint16_t retain = meta.count < capacity ? meta.count : capacity;
-  filesystem->remove(history_new_path);
+  if (!removeIfExists(history_new_path)) return false;
   File next = filesystem->open(history_new_path, FILE_WRITE);
   if (!next) return false;
   File current = filesystem->open(history_path, FILE_READ);
   if (!current) {
     next.close();
-    filesystem->remove(history_new_path);
+    removeIfExists(history_new_path);
     return false;
   }
   UltimateHistoryRecord empty = {};
@@ -855,16 +858,19 @@ bool UltimateService::setHistoryCapacity(uint16_t capacity) {
   next.flush();
   next.close();
   if (!ok) {
-    filesystem->remove(history_new_path);
+    removeIfExists(history_new_path);
     return false;
   }
 
-  filesystem->remove(history_old_path);
+  if (!removeIfExists(history_old_path)) {
+    removeIfExists(history_new_path);
+    return false;
+  }
   if (!filesystem->rename(history_path, history_old_path) ||
       !filesystem->rename(history_new_path, history_path)) {
-    filesystem->remove(history_path);
+    removeIfExists(history_path);
     filesystem->rename(history_old_path, history_path);
-    filesystem->remove(history_new_path);
+    removeIfExists(history_new_path);
     return false;
   }
 
@@ -874,11 +880,11 @@ bool UltimateService::setHistoryCapacity(uint16_t capacity) {
   meta.head = retain % capacity;
   if (!writeMeta()) {
     meta = old_meta;
-    filesystem->remove(history_path);
+    removeIfExists(history_path);
     filesystem->rename(history_old_path, history_path);
     return false;
   }
-  filesystem->remove(history_old_path);
+  removeIfExists(history_old_path);
   settings.history_capacity = capacity;
   snapshot.history_capacity = capacity;
   snapshot.history_count = retain;

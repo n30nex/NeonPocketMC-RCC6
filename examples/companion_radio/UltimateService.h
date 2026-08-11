@@ -218,6 +218,7 @@ class UltimateService {
   bool saveSettings();
   bool loadMeta();
   bool writeMeta();
+  bool removeIfExists(const char* path);
   bool ensureJournalFile(uint16_t capacity);
   bool recoverJournalSwap();
   bool readSlot(uint16_t slot, UltimateHistoryRecord& record) const;
