@@ -14,6 +14,24 @@ permissions:
   contents: read
 
 jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify checkout
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+
+      - name: Set up build environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Run upstream unit tests
+        run: pio test -e native -e native_kiss_modem -vv
+
   webui:
     runs-on: ubuntu-latest
     defaults:
@@ -39,7 +57,7 @@ jobs:
           git diff --exit-code -- .
 
   firmware:
-    needs: webui
+    needs: [tests, webui]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
