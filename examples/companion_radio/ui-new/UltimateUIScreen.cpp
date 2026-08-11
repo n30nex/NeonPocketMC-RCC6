@@ -234,9 +234,13 @@ void UltimateUIScreen::renderFooter(DisplayDriver& display, const char* hint) {
 void UltimateUIScreen::renderHome(DisplayDriver& display) {
   const UltimateSnapshot& status = ultimate_service.getSnapshot();
   const uint32_t newest_sequence = ultimate_service.getNewestSequence();
-  if (newest_sequence != home_latest_sequence) {
-    home_latest_valid = ultimate_service.getHistoryNewest(0, home_latest);
+  if (newest_sequence != home_latest_sequence ||
+      status.unread_count != home_latest_unread_count) {
+    home_latest_valid = status.unread_count
+        ? ultimate_service.getNewestUnread(home_latest)
+        : ultimate_service.getHistoryNewest(0, home_latest);
     home_latest_sequence = newest_sequence;
+    home_latest_unread_count = status.unread_count;
   } else if (newest_sequence == 0) {
     home_latest_valid = false;
   }
@@ -399,12 +403,18 @@ void UltimateUIScreen::renderInboxThreads(DisplayDriver& display) {
     display.setColor(NEON_LIGHT);
     display.drawTextCentered(110, 66, "No stored messages");
   } else {
+    const uint8_t total = thread_count + 1;
     const uint8_t first = selection > 2 ? selection - 2 : 0;
-    for (uint8_t row = 0; row < 4 && first + row < thread_count; row++) {
+    for (uint8_t row = 0; row < 4 && first + row < total; row++) {
       const uint8_t index = first + row;
-      const ThreadSummary& thread = threads[index];
       const int y = 38 + row * 18;
       drawListCard(display, 5, y, 210, 16, index == selection);
+      if (index == thread_count) {
+        display.setColor(NEON_RED);
+        display.drawTextCentered(110, y + 3, "BACK TO HOME");
+        continue;
+      }
+      const ThreadSummary& thread = threads[index];
       display.setColor(thread.kind == static_cast<uint8_t>(UltimateMessageKind::Channel)
                            ? NEON_BLUE : NEON_GREEN);
       display.drawTextEllipsized(14, y + 3, 150, thread.label);
@@ -416,7 +426,7 @@ void UltimateUIScreen::renderInboxThreads(DisplayDriver& display) {
       }
     }
   }
-  renderFooter(display, "CLICK NEXT  2X OPEN");
+  renderFooter(display, thread_count ? "CLICK NEXT  2X SELECT" : "2X BACK");
 }
 
 size_t UltimateUIScreen::renderMessagePage(
@@ -498,13 +508,19 @@ void UltimateUIScreen::renderNetworkList(DisplayDriver& display) {
     display.setColor(NEON_LIGHT);
     display.drawTextCentered(110, 66, "Listening on current preset");
   } else {
+    const uint8_t total = count + 1;
     const uint8_t first = selection > 2 ? selection - 2 : 0;
-    for (uint8_t row = 0; row < 4 && first + row < count; row++) {
+    for (uint8_t row = 0; row < 4 && first + row < total; row++) {
       const uint8_t index = first + row;
-      const UltimateNetworkNode* node = ultimate_service.getNetworkNode(index);
-      if (!node) continue;
       const int y = 38 + row * 18;
       drawListCard(display, 5, y, 210, 16, index == selection);
+      if (index == count) {
+        display.setColor(NEON_RED);
+        display.drawTextCentered(110, y + 3, "BACK TO HOME");
+        continue;
+      }
+      const UltimateNetworkNode* node = ultimate_service.getNetworkNode(index);
+      if (!node) continue;
       display.setColor(NEON_GREEN);
       display.drawTextEllipsized(14, y + 3, 140, node->name);
       char value[20];
@@ -514,7 +530,7 @@ void UltimateUIScreen::renderNetworkList(DisplayDriver& display) {
       display.drawTextRightAlign(211, y + 3, value);
     }
   }
-  renderFooter(display, "CLICK NEXT  2X DETAILS");
+  renderFooter(display, count ? "CLICK NEXT  2X SELECT" : "2X BACK");
 }
 
 void UltimateUIScreen::renderNetworkDetail(DisplayDriver& display) {
@@ -651,17 +667,23 @@ void UltimateUIScreen::renderTargetPicker(DisplayDriver& display) {
     display.setColor(NEON_ORANGE);
     display.drawTextCentered(110, 64, "No contacts or channels");
   } else {
+    const uint8_t total = target_count + 1;
     const uint8_t first = selection > 2 ? selection - 2 : 0;
-    for (uint8_t row = 0; row < 4 && first + row < target_count; row++) {
+    for (uint8_t row = 0; row < 4 && first + row < total; row++) {
       const uint8_t index = first + row;
       const int y = 38 + row * 18;
       drawListCard(display, 7, y, 206, 16, index == selection);
+      if (index == target_count) {
+        display.setColor(NEON_RED);
+        display.drawTextCentered(110, y + 3, "BACK TO TOOLS");
+        continue;
+      }
       display.setColor(targets[index].kind == static_cast<uint8_t>(UltimateMessageKind::Channel)
                            ? NEON_BLUE : NEON_GREEN);
       display.drawTextEllipsized(16, y + 3, 192, targets[index].label);
     }
   }
-  renderFooter(display, "CLICK NEXT  2X SELECT");
+  renderFooter(display, target_count ? "CLICK NEXT  2X SELECT" : "2X BACK");
 }
 
 void UltimateUIScreen::renderPhrasePicker(DisplayDriver& display) {
@@ -901,7 +923,7 @@ bool UltimateUIScreen::handleInput(char input) {
     if (view == View::Root) {
       advanceArea();
     } else if (view == View::InboxThreads) {
-      if (thread_count) selection = (selection + 1) % thread_count;
+      selection = (selection + 1) % (thread_count + 1);
     } else if (view == View::InboxMessage) {
       if (message_has_more) {
         message_page_offset = message_next_offset;
@@ -913,13 +935,13 @@ bool UltimateUIScreen::handleInput(char input) {
       }
     } else if (view == View::NetworkList) {
       const uint8_t count = ultimate_service.getNetworkCount();
-      if (count) selection = (selection + 1) % count;
+      selection = (selection + 1) % (count + 1);
     } else if (view == View::RadioPages) {
       radio_page = (radio_page + 1) % radio_page_count;
     } else if (view == View::ToolMenu) {
       selection = (selection + 1) % tool_count;
     } else if (view == View::TargetPicker) {
-      if (target_count) selection = (selection + 1) % target_count;
+      selection = (selection + 1) % (target_count + 1);
     } else if (view == View::PhrasePicker) {
       selection = (selection + 1) % 10;
     } else if (view == View::Keyboard) {
@@ -943,7 +965,7 @@ bool UltimateUIScreen::handleInput(char input) {
   if (view == View::Root) {
     handleRootAction();
   } else if (view == View::InboxThreads) {
-    if (thread_count) {
+    if (selection < thread_count) {
       selected_thread = threads[selection];
       selected_message_ordinal = 0;
       enterView(View::InboxMessage);
@@ -953,7 +975,7 @@ bool UltimateUIScreen::handleInput(char input) {
     refreshThreads();
     enterView(View::InboxThreads);
   } else if (view == View::NetworkList) {
-    if (ultimate_service.getNetworkCount()) {
+    if (selection < ultimate_service.getNetworkCount()) {
       const uint8_t selected_node = selection;
       enterView(View::NetworkDetail);
       selection = selected_node;
@@ -964,7 +986,7 @@ bool UltimateUIScreen::handleInput(char input) {
   } else if (view == View::ToolMenu) {
     handleToolAction();
   } else if (view == View::TargetPicker) {
-    if (target_count) {
+    if (selection < target_count) {
       compose_target = targets[selection];
       enterView(View::PhrasePicker);
     } else enterView(View::ToolMenu);

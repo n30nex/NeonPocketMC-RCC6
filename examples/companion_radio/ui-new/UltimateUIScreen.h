@@ -60,6 +60,7 @@ class UltimateUIScreen : public UIScreen {
   bool current_message_valid = false;
   UltimateHistoryRecord home_latest = {};
   uint32_t home_latest_sequence = 0;
+  uint16_t home_latest_unread_count = 0;
   bool home_latest_valid = false;
   ThreadSummary selected_thread = {};
   ThreadSummary threads[32] = {};

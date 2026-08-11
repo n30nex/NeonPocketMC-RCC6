@@ -697,6 +697,26 @@ bool UltimateService::getHistoryNewest(uint16_t offset, UltimateHistoryRecord& r
   return readSlot(slot, record);
 }
 
+bool UltimateService::getNewestUnread(UltimateHistoryRecord& record) const {
+  struct Search {
+    UltimateHistoryRecord* output;
+    bool found;
+  } search = {&record, false};
+  visitHistory(0, 0, false,
+      [](const UltimateHistoryRecord& candidate, void* context) {
+        Search* result = static_cast<Search*>(context);
+        if ((candidate.flags & (ULTIMATE_HISTORY_INCOMING | ULTIMATE_HISTORY_READ)) ==
+            ULTIMATE_HISTORY_INCOMING) {
+          *result->output = candidate;
+          result->found = true;
+          return false;
+        }
+        return true;
+      },
+      &search);
+  return search.found;
+}
+
 uint16_t UltimateService::visitHistory(uint32_t before_sequence, uint16_t limit,
     bool oldest_first, UltimateHistoryVisitor visitor, void* context) const {
   if (meta.count == 0 || meta.capacity == 0 || filesystem == nullptr || visitor == nullptr) {

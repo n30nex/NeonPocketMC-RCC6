@@ -266,6 +266,7 @@ public:
                                uint16_t& battery_mv) const;
   uint16_t getHistoryCount() const { return meta.count; }
   bool getHistoryNewest(uint16_t offset, UltimateHistoryRecord& record) const;
+  bool getNewestUnread(UltimateHistoryRecord& record) const;
   uint16_t visitHistory(uint32_t before_sequence, uint16_t limit, bool oldest_first,
                         UltimateHistoryVisitor visitor, void* context) const;
   bool getThreadMessage(uint8_t kind, uint8_t target, const uint8_t* peer_key,
