@@ -14,8 +14,11 @@ def text(path: str) -> str:
 platform = text("variants/heltec_rcc6/platformio.ini")
 display = text("src/helpers/ui/NV3001BDisplay.cpp")
 service = text("examples/companion_radio/UltimateService.h")
+service_cpp = text("examples/companion_radio/UltimateService.cpp")
 web = text("examples/companion_radio/UltimateWebApi.cpp")
 ui = text("examples/companion_radio/ui-new/UltimateUIScreen.cpp")
+ui_task = text("examples/companion_radio/ui-new/UITask.cpp")
+mesh = text("examples/companion_radio/MyMesh.cpp")
 
 required = {
     "Ultimate BLE environment": "[env:heltec_rcc6_ultimate_companion_ble]" in platform,
@@ -30,7 +33,20 @@ required = {
     "signed OTA": "Ed25519::verify" in web and "Update.begin" in web,
     "location endpoint": '"/api/ultimate/location"' in web,
     "six-area UI": all(name in ui for name in ["HOME", "INBOX", "NETWORK", "RADIO", "TOOLS", "POWER"]),
-    "15 FPS cadence": "animation_frame_millis = 66" in ui,
+    "adaptive animation cadence": all(value in service_cpp for value in
+        ["getRecommendedFrameMillis", "flush >= 45000", "flush >= 90000"]) and
+        "return ultimate_service.getRecommendedFrameMillis()" in ui,
+    "adaptive display timeout": "displayAutoOffMillis" in ui_task and
+        "getDisplayTimeoutMillis" in service_cpp,
+    "truthful delivery states": all(value in service for value in
+        ["Queued", "OnAir", "Transmitted", "Acked", "NoAck", "Unconfirmed", "Failed"]) and
+        "_ultimate_delivery_hash" in mesh and
+        "markDeliveryAcked" in mesh,
+    "persistent composer": all(value in service for value in
+        ["UltimateComposerState", "setPinnedTarget", "saveDraft"]) and
+        all(value in ui for value in ["RESUME DRAFT", "PIN TARGET", "{battery}", "{location}", "{name}"]),
+    "battery intelligence": all(value in service for value in
+        ["battery_trend_mv_per_hour", "battery_runtime_minutes", "battery_calibration_mv", "power_profile"]),
     "artifact verifier": (ROOT / "tools/verify_ultimate_artifact.py").is_file(),
     "portable recovery merger": (ROOT / "tools/merge_rcc6_image.py").is_file(),
 }

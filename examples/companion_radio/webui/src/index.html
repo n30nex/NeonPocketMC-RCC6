@@ -156,6 +156,8 @@
           <article class="card metric"><small>FREE HEAP</small><strong id="ultimate-free-heap">—</strong><span id="ultimate-largest">largest —</span></article>
           <article class="card metric"><small>DISPLAY FLUSH</small><strong id="ultimate-flush">—</strong><span id="ultimate-tiles">tiles —</span></article>
           <article class="card metric"><small>EVENT QUEUE</small><strong id="ultimate-drops">—</strong><span id="ultimate-queue">outbound —</span></article>
+          <article class="card metric"><small>BATTERY INTELLIGENCE</small><strong id="ultimate-battery">—</strong><span id="ultimate-runtime">Learning discharge</span></article>
+          <article class="card metric"><small>LATEST DELIVERY</small><strong id="ultimate-delivery">IDLE</strong><span id="ultimate-delivery-target">No on-device send</span></article>
         </div>
         <div class="ultimate-grid">
           <article class="card ultimate-chart-card"><div class="card-head"><div><p class="eyebrow">TWO HOURS</p><h3>Radio pulse</h3></div><span class="live-pill">LIVE</span></div><canvas id="ultimate-minute-chart" height="170"></canvas><div class="chart-legend"><span><i class="green"></i>RX</span><span><i class="blue"></i>TX</span><span><i class="orange"></i>Battery</span></div></article>
@@ -168,6 +170,8 @@
             <div class="card-head"><div><p class="eyebrow">ULTIMATE SETTINGS</p><h3>History & one-switch composer</h3></div></div>
             <label>History capacity<select id="ultimate-history-cap"><option value="0">Off</option><option value="128">128</option><option value="512">512</option><option value="2048">2048</option></select></label>
             <label>Keyboard cadence<select id="ultimate-cadence"><option value="450">450 ms</option><option value="650">650 ms</option><option value="900">900 ms</option><option value="1200">1200 ms</option></select></label>
+            <label>Power profile<select id="ultimate-power-profile"><option value="0">Balanced · 60 s screen</option><option value="1">Field · 5 min screen</option><option value="2">Battery · 30 s screen</option></select></label>
+            <label>Battery calibration offset (mV)<input id="ultimate-battery-calibration" type="number" min="-300" max="300" step="1" inputmode="numeric"></label>
             <label class="toggle-row"><input id="ultimate-private" type="checkbox"><span>Hide message bodies while the TFT is locked</span></label>
             <div id="ultimate-phrases" class="ultimate-phrases"></div>
             <button class="primary-button" type="submit">Save settings</button>

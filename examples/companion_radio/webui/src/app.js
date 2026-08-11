@@ -885,6 +885,17 @@ function renderUltimate() {
   text("ultimate-tiles", `${ultimate.displayTiles || 0} / 176 tiles`);
   text("ultimate-drops", ultimate.eventDrops || 0);
   text("ultimate-queue", `outbound ${ultimate.queueDepth || 0} · air ${Math.round((ultimate.airtimeMs || 0) / 60000)}m`);
+  const profileNames = ["BALANCED", "FIELD", "BATTERY"];
+  const trend = Number(ultimate.batteryTrendMvPerHour || 0);
+  text("ultimate-battery", `${((ultimate.batteryMv || 0) / 1000).toFixed(2)} V · ${trend > 0 ? "+" : ""}${trend} mV/h`);
+  text("ultimate-runtime", ultimate.batteryRuntimeMinutes > 0
+    ? `about ${Math.floor(ultimate.batteryRuntimeMinutes / 60)}h ${ultimate.batteryRuntimeMinutes % 60}m to 3.45 V`
+    : `${profileNames[ultimate.powerProfile] || "BALANCED"} · ${ultimate.animationFrameMs || 66} ms frames`);
+  const delivery = ultimate.delivery || {};
+  text("ultimate-delivery", String(delivery.state || "idle").toUpperCase());
+  text("ultimate-delivery-target", delivery.target
+    ? `${delivery.target}${delivery.roundTripMs ? ` · ${delivery.roundTripMs} ms` : ""}`
+    : "No on-device send");
 
   const minuteRows = (ultimate.minutes || [])
     .map((row) => ({ rx: row[1], tx: row[2], battery: row[7] }));
@@ -921,6 +932,8 @@ function renderUltimate() {
   if (settings) {
     $("ultimate-history-cap").value = String(settings.historyCapacity);
     $("ultimate-cadence").value = String(settings.scanCadenceMs);
+    $("ultimate-power-profile").value = String(settings.powerProfile || 0);
+    $("ultimate-battery-calibration").value = String(settings.batteryCalibrationMv || 0);
     $("ultimate-private").checked = Boolean(settings.privateNotifications);
     const phrases = $("ultimate-phrases");
     if (!phrases.children.length) (settings.quickPhrases || []).forEach((phrase, index) => {
@@ -1092,6 +1105,8 @@ $("ultimate-settings-form").addEventListener("submit", async (event) => {
       body: JSON.stringify({
         historyCapacity: Number($("ultimate-history-cap").value),
         scanCadenceMs: Number($("ultimate-cadence").value),
+        powerProfile: Number($("ultimate-power-profile").value),
+        batteryCalibrationMv: Number($("ultimate-battery-calibration").value),
         privateNotifications: $("ultimate-private").checked,
         quickPhrases,
       }),

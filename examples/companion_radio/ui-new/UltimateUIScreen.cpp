@@ -16,11 +16,11 @@
 
 namespace {
 constexpr uint32_t transition_millis = 360;
-constexpr uint32_t animation_frame_millis = 66;
 constexpr uint8_t radio_page_count = 4;
-constexpr uint8_t tool_count = 7;
+constexpr uint8_t tool_count = 9;
 const char* const tool_labels[tool_count] = {
-    "COMPOSE", "ADVERTISE", "TRANSPORT", "HISTORY", "PRIVACY", "ABOUT", "BACK"};
+    "REPLY LATEST", "COMPOSE", "RESUME DRAFT", "ADVERTISE", "TRANSPORT",
+    "HISTORY", "PRIVACY", "ABOUT", "BACK"};
 const uint16_t history_options[] = {0, 128, 512, 2048};
 const char* const keyboard_groups[] = {
     "abcdefg", "hijklmn", "opqrstu", "vwxyz09", " .,!?'", "^_<SX"};
@@ -56,6 +56,27 @@ void drawListCard(DisplayDriver& display, int x, int y, int width, int height,
   if (selected) {
     display.setColor(ultimate_lime);
     display.fillRect(x + 3, y + 4, 3, height - 8);
+  }
+}
+
+const char* deliveryLabel(UltimateDeliveryState state) {
+  switch (state) {
+    case UltimateDeliveryState::Queued: return "QUEUED";
+    case UltimateDeliveryState::OnAir: return "ON AIR";
+    case UltimateDeliveryState::Transmitted: return "TRANSMITTED";
+    case UltimateDeliveryState::Acked: return "ACKED";
+    case UltimateDeliveryState::NoAck: return "NO ACK";
+    case UltimateDeliveryState::Unconfirmed: return "UNCONFIRMED";
+    case UltimateDeliveryState::Failed: return "FAILED";
+    default: return "";
+  }
+}
+
+const char* powerProfileLabel(uint8_t profile) {
+  switch (static_cast<UltimatePowerProfile>(profile)) {
+    case UltimatePowerProfile::Field: return "FIELD";
+    case UltimatePowerProfile::Battery: return "BATTERY";
+    default: return "BALANCED";
   }
 }
 }
@@ -109,6 +130,12 @@ uint8_t UltimateUIScreen::buildTargets(ComposeTarget* destination, uint8_t capac
     StrHelper::strncpy(destination[count].label, label, sizeof(destination[count].label));
     count++;
   };
+
+  const UltimateComposerState& saved = ultimate_service.getComposerState();
+  if (saved.pinned_kind) {
+    add(saved.pinned_kind, saved.pinned_target, saved.pinned_key,
+        saved.pinned_label);
+  }
 
   for (uint8_t i = 0; i < ultimate_service.getThreadCount(); i++) {
     const UltimateThreadSummary* thread = ultimate_service.getThread(i);
@@ -190,7 +217,8 @@ const char* UltimateUIScreen::areaTitle() const {
 
 void UltimateUIScreen::renderHeader(DisplayDriver& display, const char* title) {
   const UltimateSnapshot& status = ultimate_service.getSnapshot();
-  const uint16_t shimmer = (millis() / animation_frame_millis) % display.width();
+  const uint16_t shimmer =
+      (millis() / ultimate_service.getRecommendedFrameMillis()) % display.width();
   display.setColor(ultimate_ink);
   display.fillRect(0, 0, display.width(), 18);
   display.setTextSize(1);
@@ -284,10 +312,26 @@ void UltimateUIScreen::renderHome(DisplayDriver& display) {
   } else {
     snprintf(line, sizeof(line), "RF %.3f SF%u", prefs->freq, prefs->sf);
   }
-  display.setCursor(8, 91);
-  display.print(line);
-  display.setColor(task->hasConnection() ? ultimate_cyan : NEON_ORANGE);
-  display.drawTextRightAlign(212, 91, task->hasConnection() ? "LINKED" : "STANDALONE");
+  display.drawTextEllipsized(8, 91, 104, line);
+  const UltimateDeliverySnapshot& delivery = ultimate_service.getDelivery();
+  if (delivery.state != UltimateDeliveryState::Idle) {
+    const bool success = delivery.state == UltimateDeliveryState::Acked ||
+        delivery.state == UltimateDeliveryState::Transmitted;
+    const bool failure = delivery.state == UltimateDeliveryState::Failed ||
+        delivery.state == UltimateDeliveryState::NoAck;
+    display.setColor(success ? ultimate_lime : (failure ? NEON_RED : NEON_YELLOW));
+    char delivery_line[28];
+    if (delivery.state == UltimateDeliveryState::Acked && delivery.round_trip_millis) {
+      snprintf(delivery_line, sizeof(delivery_line), "TX ACK %.1fs",
+               delivery.round_trip_millis / 1000.0f);
+    } else {
+      snprintf(delivery_line, sizeof(delivery_line), "TX %s", deliveryLabel(delivery.state));
+    }
+    display.drawTextRightAlign(212, 91, delivery_line);
+  } else {
+    display.setColor(task->hasConnection() ? ultimate_cyan : NEON_ORANGE);
+    display.drawTextRightAlign(212, 91, task->hasConnection() ? "LINKED" : "STANDALONE");
+  }
 }
 
 void UltimateUIScreen::renderInboxRoot(DisplayDriver& display) {
@@ -372,14 +416,37 @@ void UltimateUIScreen::renderToolsRoot(DisplayDriver& display) {
 }
 
 void UltimateUIScreen::renderPowerRoot(DisplayDriver& display) {
-  display.setColor(NEON_RED);
-  display.drawRect(18, 43, 184, 55);
-  display.setTextSize(2);
-  display.drawTextCentered(110, 52, shutdown_pending ? "POWERING OFF" : "SYSTEM OFF");
+  const UltimateSnapshot& status = ultimate_service.getSnapshot();
+  const UltimateSettings& settings = ultimate_service.getSettings();
+  display.setColor(status.battery_mv && status.battery_mv <= 3450 ? NEON_RED : ultimate_blue);
+  display.drawRect(8, 39, 204, 70);
   display.setTextSize(1);
-  display.setColor(NEON_LIGHT);
-  display.drawTextCentered(110, 80,
-      task->isPowerConfirmArmed() ? "Hold again to confirm" : "Hold button to arm");
+  display.setColor(status.battery_mv && status.battery_mv <= 3450 ? NEON_RED : ultimate_lime);
+  char line[48];
+  snprintf(line, sizeof(line), "BATTERY %.2fV", status.battery_mv / 1000.0f);
+  display.setCursor(13, 45); display.print(line);
+  display.setColor(ultimate_cyan);
+  display.drawTextRightAlign(207, 45, powerProfileLabel(settings.power_profile));
+  display.setColor(ultimate_white);
+  if (status.battery_projection_valid) {
+    snprintf(line, sizeof(line), "TREND %+d mV/h", status.battery_trend_mv_per_hour);
+  } else {
+    strcpy(line, "TREND LEARNING (10+ MIN)");
+  }
+  display.setCursor(13, 62); display.print(line);
+  if (status.battery_runtime_minutes) {
+    snprintf(line, sizeof(line), "EST ~%uh %02um TO 3.45V",
+             status.battery_runtime_minutes / 60, status.battery_runtime_minutes % 60);
+  } else if (status.battery_projection_valid && status.battery_trend_mv_per_hour >= 3) {
+    strcpy(line, "RISING / USB OR CHARGING");
+  } else {
+    strcpy(line, "RUNTIME ESTIMATE PENDING");
+  }
+  display.setColor(ultimate_muted);
+  display.setCursor(13, 79); display.print(line);
+  display.setColor(task->isPowerConfirmArmed() ? NEON_RED : ultimate_blue);
+  display.drawTextCentered(110, 96, shutdown_pending ? "POWERING OFF" :
+      (task->isPowerConfirmArmed() ? "HOLD AGAIN TO CONFIRM" : "2X PROFILE  HOLD POWER"));
 }
 
 void UltimateUIScreen::renderRoot(DisplayDriver& display) {
@@ -485,10 +552,20 @@ void UltimateUIScreen::renderInboxMessage(DisplayDriver& display) {
   display.setColor(current_message.kind == static_cast<uint8_t>(UltimateMessageKind::Channel)
                        ? NEON_BLUE : NEON_YELLOW);
   char meta_line[48];
-  snprintf(meta_line, sizeof(meta_line), "%s  %u hop%s",
-           (current_message.flags & ULTIMATE_HISTORY_INCOMING) ? "RECEIVED" : "SENT",
-           current_message.path_len == 0xFF ? 0 : current_message.path_len,
-           current_message.path_len == 1 ? "" : "s");
+  const UltimateDeliverySnapshot& delivery = ultimate_service.getDelivery();
+  if ((current_message.flags & ULTIMATE_HISTORY_INCOMING) == 0 &&
+      delivery.history_sequence == current_message.sequence &&
+      delivery.state != UltimateDeliveryState::Idle) {
+    snprintf(meta_line, sizeof(meta_line), "TX %s  %u hop%s",
+             deliveryLabel(delivery.state),
+             current_message.path_len == 0xFF ? 0 : current_message.path_len,
+             current_message.path_len == 1 ? "" : "s");
+  } else {
+    snprintf(meta_line, sizeof(meta_line), "%s  %u hop%s",
+             (current_message.flags & ULTIMATE_HISTORY_INCOMING) ? "RECEIVED" : "SENT",
+             current_message.path_len == 0xFF ? 0 : current_message.path_len,
+             current_message.path_len == 1 ? "" : "s");
+  }
   display.setCursor(5, 34);
   display.print(meta_line);
   display.setColor(NEON_BLUE);
@@ -680,7 +757,11 @@ void UltimateUIScreen::renderTargetPicker(DisplayDriver& display) {
       }
       display.setColor(targets[index].kind == static_cast<uint8_t>(UltimateMessageKind::Channel)
                            ? NEON_BLUE : NEON_GREEN);
-      display.drawTextEllipsized(16, y + 3, 192, targets[index].label);
+      display.drawTextEllipsized(16, y + 3, 154, targets[index].label);
+      if (isPinnedTarget(targets[index])) {
+        display.setColor(NEON_YELLOW);
+        display.drawTextRightAlign(207, y + 3, "PIN");
+      }
     }
   }
   renderFooter(display, target_count ? "CLICK NEXT  2X SELECT" : "2X BACK");
@@ -689,15 +770,17 @@ void UltimateUIScreen::renderTargetPicker(DisplayDriver& display) {
 void UltimateUIScreen::renderPhrasePicker(DisplayDriver& display) {
   renderHeader(display, compose_target.label);
   const UltimateSettings& settings = ultimate_service.getSettings();
-  const uint8_t total = 10;
+  const uint8_t total = 11;
   const uint8_t first = selection > 2 ? selection - 2 : 0;
   for (uint8_t row = 0; row < 4 && first + row < total; row++) {
     const uint8_t index = first + row;
     const int y = 38 + row * 18;
     drawListCard(display, 5, y, 210, 16, index == selection);
-    display.setColor(index == 8 ? NEON_GREEN : (index == 9 ? NEON_RED : NEON_LIGHT));
+    display.setColor(index == 8 ? NEON_GREEN : (index == 10 ? NEON_RED : NEON_LIGHT));
     const char* label = index < 8 ? settings.quick_phrases[index] :
-        (index == 8 ? "CUSTOM KEYBOARD" : "CANCEL");
+        (index == 8 ? "CUSTOM KEYBOARD" :
+         (index == 9 ? (isPinnedTarget(compose_target) ? "UNPIN TARGET" : "PIN TARGET")
+                     : "CANCEL"));
     display.drawTextEllipsized(14, y + 3, 196, label);
   }
   renderFooter(display, "CLICK NEXT  2X SELECT");
@@ -747,14 +830,17 @@ void UltimateUIScreen::renderSendConfirm(DisplayDriver& display) {
   display.setColor(NEON_BLUE);
   display.drawRect(7, 38, 206, 66);
   display.setColor(NEON_GREEN);
-  display.drawTextEllipsized(12, 44, 196, compose_target.label);
-  display.setColor(NEON_LIGHT);
-  display.drawTextEllipsized(12, 63, 196, compose_text);
+  display.drawTextEllipsized(12, 40, 146, compose_target.label);
   char bytes[18];
   snprintf(bytes, sizeof(bytes), "%u bytes", compose_length);
   display.setColor(NEON_YELLOW);
-  display.drawTextRightAlign(207, 86, bytes);
-  renderFooter(display, "CLICK EDIT  2X SEND");
+  display.drawTextRightAlign(207, 40, bytes);
+  display.setColor(NEON_LIGHT);
+  char filtered[sizeof(compose_text)];
+  display.translateUTF8ToBlocks(filtered, compose_text, sizeof(filtered));
+  message_next_offset = renderMessagePage(display, filtered, message_page_offset);
+  message_has_more = filtered[message_next_offset] != 0;
+  renderFooter(display, message_has_more ? "CLICK MORE  2X SEND" : "CLICK EDIT  2X SEND");
 }
 
 void UltimateUIScreen::renderHistorySettings(DisplayDriver& display) {
@@ -790,6 +876,7 @@ void UltimateUIScreen::renderTransition(DisplayDriver& display) {
   const uint16_t eased = easeOutCubic(elapsed, transition_millis);
   const int travel = (display.width() + 18) * eased / transition_millis;
   const int x = transition_direction > 0 ? travel - 9 : display.width() + 8 - travel;
+  const uint16_t frame_millis = ultimate_service.getRecommendedFrameMillis();
 
   // A tight scan beam and deterministic orbiting sparks keep each animation
   // frame local enough for the 20x8 tile flusher to sustain 15 FPS.
@@ -802,8 +889,8 @@ void UltimateUIScreen::renderTransition(DisplayDriver& display) {
   display.setColor(ultimate_white);
   display.fillRect(x + 2, 30, 1, 74);
   display.setColor(ultimate_lime);
-  display.fillRect(x + 5, 27 + ((elapsed / animation_frame_millis) % 4) * 19, 3, 3);
-  display.fillRect(x - 10, 99 - ((elapsed / animation_frame_millis) % 3) * 23, 2, 2);
+  display.fillRect(x + 5, 27 + ((elapsed / frame_millis) % 4) * 19, 3, 3);
+  display.fillRect(x - 10, 99 - ((elapsed / frame_millis) % 3) * 23, 2, 2);
 }
 
 int UltimateUIScreen::render(DisplayDriver& display) {
@@ -822,15 +909,110 @@ int UltimateUIScreen::render(DisplayDriver& display) {
     case View::HistorySettings: renderHistorySettings(display); break;
   }
   renderTransition(display);
-  // While awake, the header shimmer and tiny status accents stay at a smooth
-  // 15 FPS. Tile hashing means unchanged content costs no display transfer.
-  return animation_frame_millis;
+  // Preserve 15 FPS when the device has headroom; the service can reduce the
+  // cadence under display, queue, heap, or battery pressure.
+  return ultimate_service.getRecommendedFrameMillis();
 }
 
 void UltimateUIScreen::appendComposer(char value) {
   if (compose_length >= 140) return;
   compose_text[compose_length++] = value;
   compose_text[compose_length] = 0;
+  markDraftDirty();
+}
+
+bool UltimateUIScreen::isPinnedTarget(const ComposeTarget& target) const {
+  const UltimateComposerState& saved = ultimate_service.getComposerState();
+  if (saved.pinned_kind != target.kind || saved.pinned_target != target.target) return false;
+  return target.kind == static_cast<uint8_t>(UltimateMessageKind::Channel) ||
+      memcmp(saved.pinned_key, target.peer_key, sizeof(target.peer_key)) == 0;
+}
+
+void UltimateUIScreen::startCompose(const ComposeTarget& target, bool restore_draft) {
+  compose_target = target;
+  if (restore_draft) {
+    const UltimateComposerState& saved = ultimate_service.getComposerState();
+    const bool same = saved.draft_kind == target.kind && saved.draft_target == target.target &&
+        (target.kind == static_cast<uint8_t>(UltimateMessageKind::Channel) ||
+         memcmp(saved.draft_key, target.peer_key, sizeof(target.peer_key)) == 0);
+    if (same) {
+      StrHelper::strncpy(compose_text, saved.draft_text, sizeof(compose_text));
+      compose_length = strlen(compose_text);
+    } else {
+      compose_text[0] = 0;
+      compose_length = 0;
+    }
+  }
+  enterView(View::PhrasePicker);
+}
+
+void UltimateUIScreen::markDraftDirty() {
+  draft_dirty = true;
+  draft_save_due = millis() + 3000U;
+}
+
+void UltimateUIScreen::persistDraft() {
+  if (!draft_dirty) return;
+  if (compose_text[0]) {
+    ultimate_service.saveDraft(compose_target.kind, compose_target.target,
+        compose_target.peer_key, compose_target.label, compose_text);
+  } else {
+    ultimate_service.clearDraft();
+  }
+  draft_dirty = false;
+  draft_save_due = 0;
+}
+
+bool UltimateUIScreen::restoreDraft() {
+  const UltimateComposerState& saved = ultimate_service.getComposerState();
+  if (!saved.draft_kind || !saved.draft_text[0]) return false;
+  compose_target = {};
+  compose_target.kind = saved.draft_kind;
+  compose_target.target = saved.draft_target;
+  memcpy(compose_target.peer_key, saved.draft_key, sizeof(compose_target.peer_key));
+  StrHelper::strncpy(compose_target.label, saved.draft_label, sizeof(compose_target.label));
+  StrHelper::strncpy(compose_text, saved.draft_text, sizeof(compose_text));
+  compose_length = strlen(compose_text);
+  scan_phase = ScanPhase::Group;
+  scan_group = scan_item = 0;
+  next_scan = millis() + ultimate_service.getSettings().scan_cadence_ms;
+  enterView(View::Keyboard);
+  return true;
+}
+
+void UltimateUIScreen::expandPhrase(const char* source) {
+  compose_text[0] = 0;
+  compose_length = 0;
+  const UltimateSnapshot& status = ultimate_service.getSnapshot();
+  while (source && *source && compose_length < 140) {
+    char replacement[48] = {};
+    size_t token_length = 0;
+    if (strncmp(source, "{battery}", 9) == 0) {
+      snprintf(replacement, sizeof(replacement), "%.2fV", status.battery_mv / 1000.0f);
+      token_length = 9;
+    } else if (strncmp(source, "{location}", 10) == 0) {
+      if (prefs->node_lat != 0 || prefs->node_lon != 0) {
+        snprintf(replacement, sizeof(replacement), "%.5f,%.5f",
+                 prefs->node_lat, prefs->node_lon);
+      } else {
+        strcpy(replacement, "LOCATION UNSET");
+      }
+      token_length = 10;
+    } else if (strncmp(source, "{name}", 6) == 0) {
+      StrHelper::strncpy(replacement, prefs->node_name, sizeof(replacement));
+      token_length = 6;
+    }
+    if (token_length) {
+      for (const char* value = replacement; *value && compose_length < 140; value++) {
+        compose_text[compose_length++] = *value;
+      }
+      source += token_length;
+    } else {
+      compose_text[compose_length++] = *source++;
+    }
+  }
+  compose_text[compose_length] = 0;
+  markDraftDirty();
 }
 
 void UltimateUIScreen::handleKeyboardSelect() {
@@ -848,12 +1030,15 @@ void UltimateUIScreen::handleKeyboardSelect() {
       case 0: uppercase = !uppercase; break;
       case 1: appendComposer(' '); break;
       case 2:
-        if (compose_length) compose_text[--compose_length] = 0;
+        if (compose_length) {
+          compose_text[--compose_length] = 0;
+          markDraftDirty();
+        }
         break;
       case 3:
         if (compose_length) enterView(View::SendConfirm);
         return;
-      case 4: enterView(View::ToolMenu); return;
+      case 4: persistDraft(); enterView(View::ToolMenu); return;
     }
     scan_phase = ScanPhase::Group;
   }
@@ -871,13 +1056,27 @@ bool UltimateUIScreen::sendComposer() {
 
 void UltimateUIScreen::handleToolAction() {
   if (selection == 0) {
-    enterView(View::TargetPicker);
+    refreshThreads();
+    if (thread_count == 0) {
+      task->showAlert("No recent conversation", 1000, NEON_ORANGE);
+      return;
+    }
+    ComposeTarget target = {};
+    target.kind = threads[0].kind;
+    target.target = threads[0].target;
+    memcpy(target.peer_key, threads[0].peer_key, sizeof(target.peer_key));
+    StrHelper::strncpy(target.label, threads[0].label, sizeof(target.label));
+    startCompose(target, true);
   } else if (selection == 1) {
+    enterView(View::TargetPicker);
+  } else if (selection == 2) {
+    if (!restoreDraft()) task->showAlert("No saved draft", 1000, NEON_ORANGE);
+  } else if (selection == 3) {
     const bool queued = the_mesh.advert(true);
     if (queued) task->armManualAdvert();
     task->showAlert(queued ? "Mesh advert queued" : "Advert busy", 1000,
                     queued ? NEON_YELLOW : NEON_RED);
-  } else if (selection == 2) {
+  } else if (selection == 4) {
 #ifdef RCC6_WEB_AP
     if (web_interface.isStationMode()) {
       task->showAlert(web_interface.selectSetupAp() ? "Restarting setup AP" : "Setup failed",
@@ -888,16 +1087,16 @@ void UltimateUIScreen::handleToolAction() {
     if (task->isBluetoothEnabled()) task->disableBluetooth();
     else task->enableBluetooth();
 #endif
-  } else if (selection == 3) {
+  } else if (selection == 5) {
     enterView(View::HistorySettings);
-  } else if (selection == 4) {
+  } else if (selection == 6) {
     UltimateSettings updated = ultimate_service.getSettings();
     updated.private_notifications = !updated.private_notifications;
     const bool saved = ultimate_service.updateSettings(updated);
     task->showAlert(saved ? (updated.private_notifications ? "Private alerts on" : "Previews on")
                           : "Settings failed", 1000, saved ? NEON_GREEN : NEON_RED);
-  } else if (selection == 5) {
-    task->showAlert("Ultimate v2 / MeshCore 1.17.1", 1200, NEON_GREEN);
+  } else if (selection == 7) {
+    task->showAlert("Ultimate 2.1 / MeshCore 1.17.1", 1200, NEON_GREEN);
   } else {
     enterView(View::Root);
   }
@@ -910,10 +1109,17 @@ void UltimateUIScreen::handleRootAction() {
     case Area::Network: enterView(View::NetworkList); break;
     case Area::Radio: enterView(View::RadioPages); break;
     case Area::Tools: enterView(View::ToolMenu); break;
-    case Area::Power:
-      task->showAlert(task->isPowerConfirmArmed() ? "Hold again to confirm" : "Hold to arm power",
-                      900, NEON_RED);
+    case Area::Power: {
+      UltimateSettings updated = ultimate_service.getSettings();
+      updated.power_profile = (updated.power_profile + 1) % 3;
+      const bool saved = ultimate_service.updateSettings(updated);
+      char alert[32];
+      snprintf(alert, sizeof(alert), "%s power profile",
+               powerProfileLabel(updated.power_profile));
+      task->showAlert(saved ? alert : "Profile save failed", 1000,
+                      saved ? NEON_GREEN : NEON_RED);
       break;
+    }
     default: break;
   }
 }
@@ -943,7 +1149,7 @@ bool UltimateUIScreen::handleInput(char input) {
     } else if (view == View::TargetPicker) {
       selection = (selection + 1) % (target_count + 1);
     } else if (view == View::PhrasePicker) {
-      selection = (selection + 1) % 10;
+      selection = (selection + 1) % 11;
     } else if (view == View::Keyboard) {
       if (scan_phase == ScanPhase::Group) scan_group = (scan_group + 1) % keyboard_group_count;
       else {
@@ -952,7 +1158,11 @@ bool UltimateUIScreen::handleInput(char input) {
       }
       next_scan = millis() + ultimate_service.getSettings().scan_cadence_ms;
     } else if (view == View::SendConfirm) {
-      enterView(View::Keyboard);
+      if (message_has_more) {
+        message_page_offset = message_next_offset;
+      } else {
+        enterView(View::Keyboard);
+      }
     } else if (view == View::HistorySettings) {
       history_clear_armed = false;
       selection = (selection + 1) % 6;
@@ -987,27 +1197,39 @@ bool UltimateUIScreen::handleInput(char input) {
     handleToolAction();
   } else if (view == View::TargetPicker) {
     if (selection < target_count) {
-      compose_target = targets[selection];
-      enterView(View::PhrasePicker);
+      startCompose(targets[selection], true);
     } else enterView(View::ToolMenu);
   } else if (view == View::PhrasePicker) {
     if (selection < 8) {
-      StrHelper::strncpy(compose_text, ultimate_service.getSettings().quick_phrases[selection],
-                         sizeof(compose_text));
-      compose_length = strlen(compose_text);
+      expandPhrase(ultimate_service.getSettings().quick_phrases[selection]);
       enterView(View::SendConfirm);
     } else if (selection == 8) {
-      compose_text[0] = 0;
-      compose_length = 0;
       scan_phase = ScanPhase::Group;
       scan_group = scan_item = 0;
       next_scan = millis() + ultimate_service.getSettings().scan_cadence_ms;
       enterView(View::Keyboard);
-    } else enterView(View::ToolMenu);
+    } else if (selection == 9) {
+      const bool pinned = isPinnedTarget(compose_target);
+      const bool saved = pinned ? ultimate_service.clearPinnedTarget() :
+          ultimate_service.setPinnedTarget(compose_target.kind, compose_target.target,
+              compose_target.peer_key, compose_target.label);
+      task->showAlert(saved ? (pinned ? "Target unpinned" : "Target pinned")
+                            : "Pin save failed", 900, saved ? NEON_GREEN : NEON_RED);
+    } else {
+      persistDraft();
+      enterView(View::ToolMenu);
+    }
   } else if (view == View::Keyboard) {
     handleKeyboardSelect();
   } else if (view == View::SendConfirm) {
     const bool sent = sendComposer();
+    if (sent) {
+      ultimate_service.clearDraft();
+      compose_text[0] = 0;
+      compose_length = 0;
+      draft_dirty = false;
+      draft_save_due = 0;
+    }
     task->showAlert(sent ? "Message queued" : "Send failed", 1200,
                     sent ? NEON_GREEN : NEON_RED);
     enterView(View::ToolMenu);
@@ -1034,8 +1256,9 @@ bool UltimateUIScreen::handleInput(char input) {
 
 void UltimateUIScreen::poll() {
   if (shutdown_pending && !task->isButtonPressed()) task->shutdown();
-  if (view != View::Keyboard || task->isButtonPressed()) return;
   const uint32_t now = millis();
+  if (draft_dirty && static_cast<int32_t>(now - draft_save_due) >= 0) persistDraft();
+  if (view != View::Keyboard || task->isButtonPressed()) return;
   if (static_cast<int32_t>(now - next_scan) < 0) return;
   if (scan_phase == ScanPhase::Group) scan_group = (scan_group + 1) % keyboard_group_count;
   else {

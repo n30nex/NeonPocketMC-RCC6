@@ -16,6 +16,8 @@ constexpr const char* meta_a_path = "/np/meta-a.bin";
 constexpr const char* meta_b_path = "/np/meta-b.bin";
 constexpr const char* settings_path = "/np/settings.bin";
 constexpr const char* settings_tmp_path = "/np/settings.tmp";
+constexpr const char* composer_path = "/np/composer.bin";
+constexpr const char* composer_tmp_path = "/np/composer.tmp";
 constexpr const char* metrics_path = "/np/metrics.bin";
 
 bool generationAfter(uint32_t lhs, uint32_t rhs) {
@@ -57,6 +59,8 @@ void UltimateService::setDefaults() {
   settings.history_capacity = 512;
   settings.scan_cadence_ms = 650;
   settings.private_notifications = false;
+  settings.battery_calibration_mv = 0;
+  settings.power_profile = static_cast<uint8_t>(UltimatePowerProfile::Balanced);
   static const char* defaults[8] = {
       "On my way", "All good", "Need help", "Please repeat",
       "Received", "Where are you?", "Yes", "No"};
@@ -76,13 +80,32 @@ bool UltimateService::loadSettings() {
   }
 
   File file = filesystem->open(settings_path, FILE_READ);
+  if (!file) return false;
+  const size_t stored_size = file.size();
   SettingsFile stored = {};
-  const bool complete = file && file.size() == sizeof(stored) &&
-      file.read(reinterpret_cast<uint8_t*>(&stored), sizeof(stored)) == sizeof(stored);
-  if (file) file.close();
-  const uint32_t expected = crc32(&stored, offsetof(SettingsFile, crc32));
-  if (!complete || stored.magic != settings_magic || stored.version != format_version ||
-      stored.crc32 != expected || !validCapacity(stored.history_capacity)) {
+  bool valid = false;
+  if (stored_size == sizeof(stored) &&
+      file.read(reinterpret_cast<uint8_t*>(&stored), sizeof(stored)) == sizeof(stored)) {
+    if (stored.magic == settings_magic && stored.version == settings_format_version &&
+        stored.crc32 == crc32(&stored, offsetof(SettingsFile, crc32))) {
+      valid = true;
+    } else if (stored.version == format_version) {
+      SettingsFileV1 previous;
+      memcpy(&previous, &stored, sizeof(previous));
+      if (previous.magic == settings_magic &&
+          previous.crc32 == crc32(&previous, offsetof(SettingsFileV1, crc32))) {
+        stored.magic = settings_magic;
+        stored.version = format_version;  // saveSettings() upgrades this v1 file below
+        stored.history_capacity = previous.history_capacity;
+        stored.scan_cadence_ms = previous.scan_cadence_ms;
+        stored.private_notifications = previous.private_notifications;
+        memcpy(stored.quick_phrases, previous.quick_phrases, sizeof(stored.quick_phrases));
+        valid = true;
+      }
+    }
+  }
+  file.close();
+  if (!valid || !validCapacity(stored.history_capacity)) {
     Serial.println("Ultimate: settings invalid; using safe defaults");
     return saveSettings();
   }
@@ -94,20 +117,26 @@ bool UltimateService::loadSettings() {
     settings.scan_cadence_ms = 650;
   }
   settings.private_notifications = stored.private_notifications != 0;
+  settings.battery_calibration_mv = constrain(stored.battery_calibration_mv, -300, 300);
+  settings.power_profile = stored.power_profile <=
+      static_cast<uint8_t>(UltimatePowerProfile::Battery)
+          ? stored.power_profile : static_cast<uint8_t>(UltimatePowerProfile::Balanced);
   for (uint8_t i = 0; i < 8; i++) {
     copyText(settings.quick_phrases[i], sizeof(settings.quick_phrases[i]),
              stored.quick_phrases[i]);
   }
-  return true;
+  return stored.version == settings_format_version ? true : saveSettings();
 }
 
 bool UltimateService::saveSettings() {
   SettingsFile stored = {};
   stored.magic = settings_magic;
-  stored.version = format_version;
+  stored.version = settings_format_version;
   stored.history_capacity = settings.history_capacity;
   stored.scan_cadence_ms = settings.scan_cadence_ms;
   stored.private_notifications = settings.private_notifications ? 1 : 0;
+  stored.battery_calibration_mv = settings.battery_calibration_mv;
+  stored.power_profile = settings.power_profile;
   for (uint8_t i = 0; i < 8; i++) {
     copyText(stored.quick_phrases[i], sizeof(stored.quick_phrases[i]),
              settings.quick_phrases[i]);
@@ -128,6 +157,52 @@ bool UltimateService::saveSettings() {
   }
   if (!removeIfExists(settings_path)) return false;
   return filesystem->rename(settings_tmp_path, settings_path);
+}
+
+bool UltimateService::loadComposer() {
+  memset(&composer, 0, sizeof(composer));
+  if (!filesystem->exists(composer_path)) return saveComposer();
+  File file = filesystem->open(composer_path, FILE_READ);
+  ComposerFile stored = {};
+  const bool complete = file && file.size() == sizeof(stored) &&
+      file.read(reinterpret_cast<uint8_t*>(&stored), sizeof(stored)) == sizeof(stored);
+  if (file) file.close();
+  const bool valid = complete && stored.magic == composer_magic &&
+      stored.version == format_version &&
+      stored.crc32 == crc32(&stored, offsetof(ComposerFile, crc32)) &&
+      stored.state.pinned_kind <= static_cast<uint8_t>(UltimateMessageKind::Channel) &&
+      stored.state.draft_kind <= static_cast<uint8_t>(UltimateMessageKind::Channel);
+  if (!valid) {
+    Serial.println("Ultimate: composer state invalid; starting clean");
+    return saveComposer();
+  }
+  composer = stored.state;
+  composer.pinned_label[sizeof(composer.pinned_label) - 1] = 0;
+  composer.draft_label[sizeof(composer.draft_label) - 1] = 0;
+  composer.draft_text[sizeof(composer.draft_text) - 1] = 0;
+  return true;
+}
+
+bool UltimateService::saveComposer() {
+  ComposerFile stored = {};
+  stored.magic = composer_magic;
+  stored.version = format_version;
+  stored.state = composer;
+  stored.crc32 = crc32(&stored, offsetof(ComposerFile, crc32));
+  if (!removeIfExists(composer_tmp_path)) return false;
+  File file = filesystem->open(composer_tmp_path, FILE_WRITE);
+  const bool written = file &&
+      file.write(reinterpret_cast<const uint8_t*>(&stored), sizeof(stored)) == sizeof(stored);
+  if (file) {
+    file.flush();
+    file.close();
+  }
+  if (!written) {
+    removeIfExists(composer_tmp_path);
+    return false;
+  }
+  if (!removeIfExists(composer_path)) return false;
+  return filesystem->rename(composer_tmp_path, composer_path);
 }
 
 bool UltimateService::removeIfExists(const char* path) {
@@ -278,6 +353,12 @@ bool UltimateService::appendRecord(const PendingEvent& event) {
 
   snapshot.last_sequence = record.sequence;
   snapshot.history_count = meta.count;
+  if ((record.flags & ULTIMATE_HISTORY_INCOMING) == 0 &&
+      delivery.history_sequence == 0 && delivery.kind == record.kind &&
+      strncmp(delivery.target, record.sender, sizeof(delivery.target) - 1) == 0 &&
+      strncmp(delivery.text, record.text, sizeof(delivery.text) - 1) == 0) {
+    delivery.history_sequence = record.sequence;
+  }
   if ((record.flags & (ULTIMATE_HISTORY_INCOMING | ULTIMATE_HISTORY_READ)) ==
       ULTIMATE_HISTORY_INCOMING) {
     if (snapshot.unread_count < 0xFFFF) snapshot.unread_count++;
@@ -571,13 +652,51 @@ void UltimateService::sampleHighResolution() {
   if (high_resolution_count < high_resolution_capacity) high_resolution_count++;
 }
 
+void UltimateService::sampleBatteryProjection() {
+  snapshot.battery_projection_valid = false;
+  snapshot.battery_trend_mv_per_hour = 0;
+  snapshot.battery_runtime_minutes = 0;
+  if (high_resolution_count < 10 || snapshot.battery_mv == 0) return;
+
+  const uint8_t newest_index =
+      (high_resolution_head + high_resolution_capacity - 1) % high_resolution_capacity;
+  const uint8_t oldest_index =
+      (high_resolution_head + high_resolution_capacity - high_resolution_count) %
+      high_resolution_capacity;
+  const HighResolutionMetric& newest = high_resolution[newest_index];
+  const HighResolutionMetric& oldest = high_resolution[oldest_index];
+  if (newest.timestamp <= oldest.timestamp) return;
+  const uint32_t elapsed = newest.timestamp - oldest.timestamp;
+  if (elapsed < 600U) return;
+
+  int32_t trend = (static_cast<int32_t>(newest.battery_mv) - oldest.battery_mv) *
+      3600L / static_cast<int32_t>(elapsed);
+  trend = constrain(trend, -32768, 32767);
+  snapshot.battery_trend_mv_per_hour = static_cast<int16_t>(trend);
+  snapshot.battery_projection_valid = true;
+  if (trend <= -3 && snapshot.battery_mv > 3450) {
+    const uint32_t minutes =
+        static_cast<uint32_t>(snapshot.battery_mv - 3450) * 60U /
+        static_cast<uint32_t>(-trend);
+    snapshot.battery_runtime_minutes =
+        static_cast<uint16_t>(minutes > 65535UL ? 65535UL : minutes);
+  }
+}
+
 void UltimateService::sampleStatus() {
   snapshot.uptime_seconds = millis() / 1000U;
   snapshot.free_heap = ESP.getFreeHeap();
   snapshot.largest_allocation = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
   snapshot.storage_used_kb = store->getStorageUsedKb();
   snapshot.storage_total_kb = store->getStorageTotalKb();
-  snapshot.battery_mv = board->getBattMilliVolts();
+  const uint16_t raw_battery = board->getBattMilliVolts();
+  if (raw_battery) {
+    const int32_t calibrated = static_cast<int32_t>(raw_battery) +
+        settings.battery_calibration_mv;
+    snapshot.battery_mv = static_cast<uint16_t>(constrain(calibrated, 1, 65535));
+  } else {
+    snapshot.battery_mv = 0;
+  }
   snapshot.history_count = meta.count;
   snapshot.history_capacity = settings.history_capacity;
 
@@ -596,6 +715,9 @@ void UltimateService::sampleStatus() {
     }
   }
   sampleHighResolution();
+  sampleBatteryProjection();
+  snapshot.animation_frame_millis = getRecommendedFrameMillis();
+  snapshot.display_timeout_millis = getDisplayTimeoutMillis();
   const uint32_t hour = now / 3600U;
   if (last_hour != 0 && hour != last_hour) {
     saveMetricBucket(last_hour % hourly_capacity);
@@ -613,7 +735,7 @@ bool UltimateService::begin(
     Serial.println("Ultimate: cannot create /np storage namespace");
     return false;
   }
-  if (!loadSettings() || !loadMeta() || !recoverJournalSwap() ||
+  if (!loadSettings() || !loadComposer() || !loadMeta() || !recoverJournalSwap() ||
       !ensureJournalFile(meta.capacity)) {
     Serial.println("Ultimate: journal initialization failed");
     return false;
@@ -646,6 +768,7 @@ void UltimateService::loop() {
   uint8_t budget = 1;  // keep journal writes inside one 66 ms UI frame budget
   while (budget-- && popEvent(event)) processEvent(event);
   const uint32_t now = millis();
+  refreshDeliveryState(now);
   if (static_cast<int32_t>(now - next_status_sample) >= 0) {
     next_status_sample = now + 60000;
     sampleStatus();
@@ -915,7 +1038,9 @@ bool UltimateService::setHistoryCapacity(uint16_t capacity) {
 bool UltimateService::updateSettings(const UltimateSettings& updated) {
   if (!validCapacity(updated.history_capacity) ||
       (updated.scan_cadence_ms != 450 && updated.scan_cadence_ms != 650 &&
-       updated.scan_cadence_ms != 900 && updated.scan_cadence_ms != 1200)) {
+       updated.scan_cadence_ms != 900 && updated.scan_cadence_ms != 1200) ||
+      updated.battery_calibration_mv < -300 || updated.battery_calibration_mv > 300 ||
+      updated.power_profile > static_cast<uint8_t>(UltimatePowerProfile::Battery)) {
     return false;
   }
   UltimateSettings safe = updated;
@@ -928,7 +1053,136 @@ bool UltimateService::updateSettings(const UltimateSettings& updated) {
   }
   settings = safe;
   snapshot.history_capacity = settings.history_capacity;
+  snapshot.animation_frame_millis = getRecommendedFrameMillis();
+  snapshot.display_timeout_millis = getDisplayTimeoutMillis();
   return saveSettings();
+}
+
+bool UltimateService::setPinnedTarget(uint8_t kind, uint8_t target,
+    const uint8_t* peer_key, const char* label) {
+  if (kind < static_cast<uint8_t>(UltimateMessageKind::Direct) ||
+      kind > static_cast<uint8_t>(UltimateMessageKind::Channel) ||
+      (kind == static_cast<uint8_t>(UltimateMessageKind::Direct) && peer_key == nullptr)) {
+    return false;
+  }
+  composer.pinned_kind = kind;
+  composer.pinned_target = target;
+  memset(composer.pinned_key, 0, sizeof(composer.pinned_key));
+  if (peer_key) memcpy(composer.pinned_key, peer_key, sizeof(composer.pinned_key));
+  copyText(composer.pinned_label, sizeof(composer.pinned_label), label);
+  return saveComposer();
+}
+
+bool UltimateService::clearPinnedTarget() {
+  composer.pinned_kind = 0;
+  composer.pinned_target = 0;
+  memset(composer.pinned_key, 0, sizeof(composer.pinned_key));
+  composer.pinned_label[0] = 0;
+  return saveComposer();
+}
+
+bool UltimateService::saveDraft(uint8_t kind, uint8_t target,
+    const uint8_t* peer_key, const char* label, const char* text) {
+  if (text == nullptr || text[0] == 0) return clearDraft();
+  if (kind < static_cast<uint8_t>(UltimateMessageKind::Direct) ||
+      kind > static_cast<uint8_t>(UltimateMessageKind::Channel) ||
+      (kind == static_cast<uint8_t>(UltimateMessageKind::Direct) && peer_key == nullptr)) {
+    return false;
+  }
+  composer.draft_kind = kind;
+  composer.draft_target = target;
+  memset(composer.draft_key, 0, sizeof(composer.draft_key));
+  if (peer_key) memcpy(composer.draft_key, peer_key, sizeof(composer.draft_key));
+  copyText(composer.draft_label, sizeof(composer.draft_label), label);
+  copyText(composer.draft_text, sizeof(composer.draft_text), text);
+  return saveComposer();
+}
+
+bool UltimateService::clearDraft() {
+  composer.draft_kind = 0;
+  composer.draft_target = 0;
+  memset(composer.draft_key, 0, sizeof(composer.draft_key));
+  composer.draft_label[0] = 0;
+  composer.draft_text[0] = 0;
+  return saveComposer();
+}
+
+void UltimateService::startDelivery(uint8_t kind, const char* target,
+    const char* text, uint32_t expected_ack, uint32_t timeout_millis) {
+  delivery = {};
+  delivery.state = UltimateDeliveryState::Queued;
+  delivery.kind = kind;
+  delivery.ack_expected = expected_ack != 0;
+  delivery.expected_ack = expected_ack;
+  delivery.started_millis = delivery.changed_millis = millis();
+  const uint32_t ack_timeout = timeout_millis < 5000UL ? 5000UL : timeout_millis;
+  delivery.deadline_millis = delivery.started_millis +
+      (delivery.ack_expected ? ack_timeout + 2000UL : 30000UL);
+  copyText(delivery.target, sizeof(delivery.target), target);
+  copyText(delivery.text, sizeof(delivery.text), text);
+}
+
+void UltimateService::markDeliveryOnAir() {
+  if (delivery.state != UltimateDeliveryState::Queued) return;
+  delivery.state = delivery.ack_expected
+      ? UltimateDeliveryState::OnAir : UltimateDeliveryState::Transmitted;
+  delivery.changed_millis = millis();
+}
+
+void UltimateService::markDeliveryFailed() {
+  if (delivery.state == UltimateDeliveryState::Idle ||
+      delivery.state == UltimateDeliveryState::Acked) return;
+  delivery.state = UltimateDeliveryState::Failed;
+  delivery.changed_millis = millis();
+}
+
+void UltimateService::markDeliveryAcked(uint32_t expected_ack,
+    uint32_t round_trip_millis) {
+  if (!delivery.ack_expected || expected_ack == 0 ||
+      delivery.expected_ack != expected_ack) return;
+  delivery.state = UltimateDeliveryState::Acked;
+  delivery.round_trip_millis = round_trip_millis;
+  delivery.changed_millis = millis();
+}
+
+void UltimateService::refreshDeliveryState(uint32_t now) {
+  if (delivery.deadline_millis == 0 ||
+      (delivery.state != UltimateDeliveryState::Queued &&
+       delivery.state != UltimateDeliveryState::OnAir)) return;
+  if (static_cast<int32_t>(now - delivery.deadline_millis) >= 0) {
+    delivery.state = delivery.ack_expected
+        ? UltimateDeliveryState::NoAck : UltimateDeliveryState::Unconfirmed;
+    delivery.changed_millis = now;
+  }
+}
+
+uint16_t UltimateService::getRecommendedFrameMillis() const {
+  uint16_t interval = settings.power_profile ==
+      static_cast<uint8_t>(UltimatePowerProfile::Battery) ? 125 : 66;
+  const uint32_t flush = snapshot.display_flush_ema_micros;
+  if (snapshot.outbound_queue_depth >= 12 || flush >= 90000 ||
+      (snapshot.largest_allocation && snapshot.largest_allocation < 32768)) {
+    if (interval < 150) interval = 150;
+  } else if (snapshot.outbound_queue_depth >= 6 || flush >= 45000) {
+    if (interval < 100) interval = 100;
+  }
+  return interval;
+}
+
+uint32_t UltimateService::getDisplayTimeoutMillis() const {
+  switch (static_cast<UltimatePowerProfile>(settings.power_profile)) {
+    case UltimatePowerProfile::Field: return 300000U;
+    case UltimatePowerProfile::Battery: return 30000U;
+    default: return 60000U;
+  }
+}
+
+void UltimateService::setDisplayTransfer(uint32_t micros, uint16_t tiles) {
+  snapshot.display_flush_micros = micros;
+  snapshot.display_tiles_sent = tiles;
+  snapshot.display_flush_ema_micros = snapshot.display_flush_ema_micros
+      ? (snapshot.display_flush_ema_micros * 3U + micros) / 4U : micros;
+  snapshot.animation_frame_millis = getRecommendedFrameMillis();
 }
 
 #endif
