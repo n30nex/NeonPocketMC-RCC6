@@ -275,6 +275,18 @@ uint8_t MyMesh::getExtraAckTransmitCount() const {
 }
 
 void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
+#ifdef NEONPOCKET_ULTIMATE
+  if (len > 0) {
+    const uint8_t payload_type = (raw[0] >> PH_TYPE_SHIFT) & PH_TYPE_MASK;
+    _ultimate_last_rx_millis = millis();
+    _ultimate_last_rx_rssi = (int16_t)rssi;
+    _ultimate_last_rx_snr_q4 = (int8_t)(snr * 4);
+    _ultimate_last_rx_payload = payload_type;
+    ultimate_service.enqueueRadio(UltimateRadioEvent::Rx, payload_type,
+                                  (int16_t)rssi, (int8_t)(snr * 4),
+                                  _radio->getEstAirtimeFor(len));
+  }
+#endif
   if (_ui && len > 0) {
     uint8_t payload_type = (raw[0] >> PH_TYPE_SHIFT) & PH_TYPE_MASK;
     _ui->onRadioEvent(UIRadioEvent::Rx, payload_type,
@@ -294,7 +306,12 @@ void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
 }
 
 void MyMesh::logTx(mesh::Packet* packet, int len) {
+#ifdef NEONPOCKET_ULTIMATE
+  ultimate_service.enqueueRadio(UltimateRadioEvent::Tx, packet->getPayloadType(), 0, 0,
+                                _radio->getEstAirtimeFor(len));
+#else
   (void) len;
+#endif
 #ifdef NEONPOCKET_UI
   const bool report = packet->getPayloadType() != PAYLOAD_TYPE_ADVERT || packet == _ui_advert_packet;
   if (packet == _ui_advert_packet) _ui_advert_packet = nullptr;
@@ -307,7 +324,12 @@ void MyMesh::logTx(mesh::Packet* packet, int len) {
 }
 
 void MyMesh::logTxFail(mesh::Packet* packet, int len) {
+#ifdef NEONPOCKET_ULTIMATE
+  ultimate_service.enqueueRadio(UltimateRadioEvent::TxFailed, packet->getPayloadType(), 0, 0,
+                                _radio->getEstAirtimeFor(len));
+#else
   (void) len;
+#endif
 #ifdef NEONPOCKET_UI
   const bool report = packet->getPayloadType() != PAYLOAD_TYPE_ADVERT || packet == _ui_advert_packet;
   if (packet == _ui_advert_packet) _ui_advert_packet = nullptr;
@@ -374,6 +396,15 @@ void MyMesh::onContactsFull() {
 }
 
 void MyMesh::onDiscoveredContact(ContactInfo &contact, bool is_new, uint8_t path_len, const uint8_t* path) {
+#ifdef NEONPOCKET_ULTIMATE
+  const bool attributable = _ultimate_last_rx_payload == PAYLOAD_TYPE_ADVERT &&
+      millis() - _ultimate_last_rx_millis <= 250;
+  ultimate_service.enqueueNode(contact.id.pub_key, contact.name, contact.type, path_len,
+                               getRTCClock()->getCurrentTime(),
+                               attributable ? _ultimate_last_rx_rssi : 0,
+                               attributable ? _ultimate_last_rx_snr_q4 : 0,
+                               attributable);
+#endif
   if (_serial->isConnected()) {
     if (is_new) {
       writeContactRespFrame(PUSH_CODE_NEW_ADVERT, contact);
@@ -496,6 +527,15 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
 #ifdef DISPLAY_CLASS
   // we only want to show text messages on display, not cli data
   bool should_display = txt_type == TXT_TYPE_PLAIN || txt_type == TXT_TYPE_SIGNED_PLAIN;
+#ifdef NEONPOCKET_ULTIMATE
+  if (should_display) {
+    const bool attributable = millis() - _ultimate_last_rx_millis <= 250;
+    ultimate_service.enqueueMessage(
+        UltimateMessageKind::Direct, true, 0, from.id.pub_key, from.name, text,
+        sender_timestamp, path_len, attributable ? _ultimate_last_rx_rssi : 0,
+        attributable ? _ultimate_last_rx_snr_q4 : (int8_t)(pkt->getSNR() * 4));
+  }
+#endif
   if (should_display && _ui) {
 #ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
     memcpy(_ui_reply_pubkey_prefix, from.id.pub_key, sizeof(_ui_reply_pubkey_prefix));
@@ -630,6 +670,13 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
     }
 #endif
   }
+#ifdef NEONPOCKET_ULTIMATE
+  const bool attributable = millis() - _ultimate_last_rx_millis <= 250;
+  ultimate_service.enqueueMessage(
+      UltimateMessageKind::Channel, true, channel_idx, nullptr, channel_name, text,
+      timestamp, path_len, attributable ? _ultimate_last_rx_rssi : 0,
+      attributable ? _ultimate_last_rx_snr_q4 : (int8_t)(pkt->getSNR() * 4));
+#endif
   if (_ui) {
     _ui->newMsgWithEvent(path_len, channel_name, text, offline_queue_len,
                          UIEventType::channelMessage);
@@ -1166,6 +1213,13 @@ void MyMesh::handleCmdFrame(size_t len) {
         memcpy(&out_frame[2], &expected_ack, 4);
         memcpy(&out_frame[6], &est_timeout, 4);
         _serial->writeFrame(out_frame, 10);
+#ifdef NEONPOCKET_ULTIMATE
+        if (txt_type == TXT_TYPE_PLAIN) {
+          ultimate_service.enqueueMessage(UltimateMessageKind::Direct, false, 0,
+              recipient->id.pub_key, recipient->name, text, msg_timestamp,
+              recipient->out_path_len, 0, 0);
+        }
+#endif
       }
     } else {
       writeErrFrame(recipient == NULL
@@ -1187,6 +1241,10 @@ void MyMesh::handleCmdFrame(size_t len) {
       ChannelDetails channel;
       bool success = getChannel(channel_idx, channel);
       if (success && sendGroupMessage(msg_timestamp, channel.channel, _prefs.node_name, text, len - i)) {
+#ifdef NEONPOCKET_ULTIMATE
+        ultimate_service.enqueueMessage(UltimateMessageKind::Channel, false, channel_idx,
+            nullptr, channel.name, text, msg_timestamp, OUT_PATH_UNKNOWN, 0, 0);
+#endif
         writeOKFrame();
       } else {
         writeErrFrame(ERR_CODE_NOT_FOUND); // bad channel_idx
@@ -2083,6 +2141,37 @@ void MyMesh::enterCLIRescue() {
   Serial.println("========= CLI Rescue =========");
 }
 
+#ifdef NEONPOCKET_ULTIMATE
+static void printUltimateJsonString(const char* text) {
+  Serial.print('"');
+  for (const unsigned char* p = reinterpret_cast<const unsigned char*>(text); p && *p; p++) {
+    if (*p == '"' || *p == '\\') { Serial.print('\\'); Serial.print(static_cast<char>(*p)); }
+    else if (*p == '\n') Serial.print("\\n");
+    else if (*p == '\r') Serial.print("\\r");
+    else if (*p == '\t') Serial.print("\\t");
+    else if (*p >= 0x20) Serial.print(static_cast<char>(*p));
+  }
+  Serial.print('"');
+}
+
+static bool exportUltimateRecord(const UltimateHistoryRecord& record, void*) {
+  Serial.printf("{\"sequence\":%lu,\"timestamp\":%lu,\"incoming\":%s,\"kind\":%u,\"target\":%u,\"sender\":",
+                (unsigned long)record.sequence, (unsigned long)record.timestamp,
+                (record.flags & ULTIMATE_HISTORY_INCOMING) ? "true" : "false",
+                record.kind, record.target);
+  printUltimateJsonString(record.sender);
+  Serial.print(",\"text\":");
+  printUltimateJsonString(record.text);
+  Serial.println('}');
+  yield();
+  return true;
+}
+
+static void exportUltimateHistoryToSerial() {
+  ultimate_service.visitHistory(0, 0, true, exportUltimateRecord, nullptr);
+}
+#endif
+
 void MyMesh::checkCLIRescueCmd() {
   int len = strlen(cli_command);
   while (Serial.available() && len < sizeof(cli_command)-1) {
@@ -2109,6 +2198,45 @@ void MyMesh::checkCLIRescueCmd() {
       } else {
         Serial.printf("  Error: unknown config: %s\n", config);
       }
+#ifdef NEONPOCKET_ULTIMATE
+    } else if (strcmp(cli_command, "np status") == 0) {
+      const UltimateSnapshot& status = ultimate_service.getSnapshot();
+      Serial.printf("Ultimate %s history=%u/%u unread=%u rx=%lu tx=%lu fail=%lu heap=%lu largest=%lu gate=%s\n",
+                    NEONPOCKET_ULTIMATE_VERSION, status.history_count, status.history_capacity,
+                    status.unread_count, (unsigned long)status.rx_packets,
+                    (unsigned long)status.tx_packets, (unsigned long)status.tx_failures,
+                    (unsigned long)status.free_heap, (unsigned long)status.largest_allocation,
+                    status.memory_gate_passed ? "pass" : "pending");
+    } else if (strcmp(cli_command, "np history export") == 0) {
+      exportUltimateHistoryToSerial();
+    } else if (strcmp(cli_command, "np history clear CONFIRM") == 0) {
+      Serial.println(ultimate_service.clearHistory() ? "  > Ultimate history cleared"
+                                                      : "  Error: history clear failed");
+    } else if (memcmp(cli_command, "np history capacity ", 20) == 0) {
+      const char* value = &cli_command[20];
+      const uint16_t capacity = strcmp(value, "off") == 0 ? 0 : atoi(value);
+      Serial.println(ultimate_service.setHistoryCapacity(capacity)
+                         ? "  > history capacity saved" : "  Error: capacity must be off/128/512/2048");
+    } else if (memcmp(cli_command, "np private ", 11) == 0) {
+      UltimateSettings updated = ultimate_service.getSettings();
+      if (strcmp(&cli_command[11], "on") == 0) updated.private_notifications = true;
+      else if (strcmp(&cli_command[11], "off") == 0) updated.private_notifications = false;
+      else { Serial.println("  Error: use np private on|off"); cli_command[0] = 0; return; }
+      Serial.println(ultimate_service.updateSettings(updated) ? "  > privacy saved"
+                                                               : "  Error: settings write failed");
+    } else if (memcmp(cli_command, "np cadence ", 11) == 0) {
+      UltimateSettings updated = ultimate_service.getSettings();
+      updated.scan_cadence_ms = atoi(&cli_command[11]);
+      Serial.println(ultimate_service.updateSettings(updated)
+                         ? "  > scan cadence saved" : "  Error: cadence must be 450/650/900/1200");
+    } else if (memcmp(cli_command, "np phrase ", 10) == 0 && cli_command[10] >= '1' && cli_command[10] <= '8' &&
+               cli_command[11] == ' ') {
+      UltimateSettings updated = ultimate_service.getSettings();
+      const uint8_t index = cli_command[10] - '1';
+      StrHelper::strncpy(updated.quick_phrases[index], &cli_command[12], sizeof(updated.quick_phrases[index]));
+      Serial.println(ultimate_service.updateSettings(updated) ? "  > quick phrase saved"
+                                                               : "  Error: phrase write failed");
+#endif
     } else if (strcmp(cli_command, "rebuild") == 0) {
       bool success = _store->formatFileSystem();
       if (success) {
@@ -2300,6 +2428,9 @@ void MyMesh::loop() {
 #ifdef DISPLAY_CLASS
   if (_ui) _ui->setHasConnection(_serial->isConnected());
 #endif
+#ifdef NEONPOCKET_ULTIMATE
+  ultimate_service.setQueueDepth((uint8_t)_mgr->getOutboundTotal());
+#endif
 }
 
 #ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
@@ -2332,6 +2463,43 @@ bool MyMesh::sendQuickReplyToLatest(const char* text) {
            sendGroupMessage(timestamp, channel.channel, _prefs.node_name, text, strlen(text));
   }
   return false;
+}
+#endif
+
+#ifdef NEONPOCKET_ULTIMATE
+bool MyMesh::sendUltimateDirect(const uint8_t pubkey_prefix[6], const char* text) {
+  if (text == nullptr || text[0] == 0) return false;
+  ContactInfo* recipient = lookupContactByPubKey(pubkey_prefix, 6);
+  if (recipient == nullptr) return false;
+  const uint32_t timestamp = getRTCClock()->getCurrentTimeUnique();
+  uint32_t expected_ack = 0;
+  uint32_t est_timeout = 0;
+  const int result = sendMessage(*recipient, timestamp, 0, text, expected_ack, est_timeout);
+  if (result == MSG_SEND_FAILED) return false;
+  if (expected_ack) {
+    expected_ack_table[next_ack_idx].msg_sent = _ms->getMillis();
+    expected_ack_table[next_ack_idx].ack = expected_ack;
+    expected_ack_table[next_ack_idx].contact = recipient;
+    next_ack_idx = (next_ack_idx + 1) % EXPECTED_ACK_TABLE_SIZE;
+  }
+  ultimate_service.enqueueMessage(UltimateMessageKind::Direct, false, 0,
+      recipient->id.pub_key, recipient->name, text, timestamp, recipient->out_path_len, 0, 0);
+  return true;
+}
+
+bool MyMesh::sendUltimateChannel(uint8_t channel_index, const char* text) {
+  if (text == nullptr || text[0] == 0) return false;
+  ChannelDetails channel;
+  if (!getChannel(channel_index, channel)) return false;
+  const uint32_t timestamp = getRTCClock()->getCurrentTimeUnique();
+  if (!sendGroupMessage(timestamp, channel.channel, _prefs.node_name, text, strlen(text))) {
+    return false;
+  }
+  char label[32];
+  snprintf(label, sizeof(label), "#%s", channel.name);
+  ultimate_service.enqueueMessage(UltimateMessageKind::Channel, false, channel_index,
+      nullptr, label, text, timestamp, 0xFF, 0, 0);
+  return true;
 }
 #endif
 

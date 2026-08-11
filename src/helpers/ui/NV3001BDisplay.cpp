@@ -348,14 +348,38 @@ void NV3001BDisplay::writeColor(uint16_t rgb, uint32_t count) {
 }
 
 #if NV3001B_USE_FRAMEBUFFER
-static uint64_t hashFramebufferPixels(const uint16_t* pixels, size_t count) {
+#if NV3001B_USE_INDEXED_FRAMEBUFFER
+bool NV3001BDisplay::framebufferPaletteIndex(uint16_t rgb, uint8_t& index) {
+  for (uint16_t i = 0; i < framebuffer_palette_size; i++) {
+    if (framebuffer_palette[i] == rgb) {
+      index = static_cast<uint8_t>(i);
+      return true;
+    }
+  }
+  if (framebuffer_palette_size == framebuffer_palette_capacity) return false;
+  index = static_cast<uint8_t>(framebuffer_palette_size);
+  framebuffer_palette[framebuffer_palette_size++] = rgb;
+  return true;
+}
+#endif
+
+uint64_t NV3001BDisplay::hashFramebufferTile(
+    uint16_t x, uint16_t y, uint16_t w, uint16_t h) const {
   uint64_t hash = 0xcbf29ce484222325ULL;
-  while (count--) {
-    const uint16_t pixel = *pixels++;
-    hash ^= pixel >> 8;
-    hash *= 0x100000001b3ULL;
-    hash ^= pixel & 0xff;
-    hash *= 0x100000001b3ULL;
+  for (uint16_t row = 0; row < h; row++) {
+    size_t offset = (size_t)(y + row) * NV3001B_SCREEN_WIDTH + x;
+    for (uint16_t col = 0; col < w; col++, offset++) {
+#if NV3001B_USE_INDEXED_FRAMEBUFFER
+      hash ^= framebuffer[offset];
+      hash *= 0x100000001b3ULL;
+#else
+      const uint16_t pixel = framebuffer[offset];
+      hash ^= pixel >> 8;
+      hash *= 0x100000001b3ULL;
+      hash ^= pixel & 0xff;
+      hash *= 0x100000001b3ULL;
+#endif
+    }
   }
   return hash;
 }
@@ -363,35 +387,71 @@ static uint64_t hashFramebufferPixels(const uint16_t* pixels, size_t count) {
 void NV3001BDisplay::flushFramebuffer() {
   if (!framebuffer || !is_on) return;
 
-  const bool force_full = !framebuffer_hashes_valid || framebuffer_flushes_since_full == 255;
-  for (uint16_t band = 0, y = 0; y < NV3001B_SCREEN_HEIGHT;
-       band++, y += framebuffer_band_rows) {
-    const uint16_t rows = y + framebuffer_band_rows <= NV3001B_SCREEN_HEIGHT
-        ? framebuffer_band_rows : NV3001B_SCREEN_HEIGHT - y;
-    const size_t first = (size_t)y * NV3001B_SCREEN_WIDTH;
-    const size_t count = (size_t)rows * NV3001B_SCREEN_WIDTH;
-    const uint64_t hash = hashFramebufferPixels(framebuffer + first, count);
-    if (!force_full && hash == framebuffer_band_hashes[band]) continue;
+  const uint32_t started = micros();
+  const bool force_full = !framebuffer_hashes_valid || framebuffer_flushes_since_full == 4095;
+  framebuffer_last_tiles_sent = 0;
 
-    setAddrWindow(0, y, NV3001B_SCREEN_WIDTH, rows);
-    beginTransfer();
-    digitalWrite(PIN_TFT_CS, LOW);
-    digitalWrite(PIN_TFT_DC, LOW);
-    transferByte(NV3001B_RAMWR);
-    digitalWrite(PIN_TFT_DC, HIGH);
-    const size_t end = first + count;
-    for (size_t i = first; i < end; i++) {
-      transferByte(framebuffer[i] >> 8);
-      transferByte(framebuffer[i] & 0xff);
+  for (uint8_t tile_row = 0; tile_row < framebuffer_tile_rows; tile_row++) {
+    const uint16_t y = tile_row * framebuffer_tile_height;
+    const uint16_t rows = y + framebuffer_tile_height <= NV3001B_SCREEN_HEIGHT
+        ? framebuffer_tile_height : NV3001B_SCREEN_HEIGHT - y;
+    uint64_t current_hashes[framebuffer_tile_columns];
+    bool changed[framebuffer_tile_columns];
+
+    for (uint8_t tile_col = 0; tile_col < framebuffer_tile_columns; tile_col++) {
+      const uint16_t x = tile_col * framebuffer_tile_width;
+      const uint16_t width = x + framebuffer_tile_width <= NV3001B_SCREEN_WIDTH
+          ? framebuffer_tile_width : NV3001B_SCREEN_WIDTH - x;
+      const uint16_t tile = tile_row * framebuffer_tile_columns + tile_col;
+      current_hashes[tile_col] = hashFramebufferTile(x, y, width, rows);
+      changed[tile_col] = force_full || current_hashes[tile_col] != framebuffer_tile_hashes[tile];
     }
-    digitalWrite(PIN_TFT_CS, HIGH);
-    endTransfer();
-    framebuffer_band_hashes[band] = hash;
-    if (y + rows < NV3001B_SCREEN_HEIGHT) yield();
+
+    for (uint8_t first_col = 0; first_col < framebuffer_tile_columns;) {
+      while (first_col < framebuffer_tile_columns && !changed[first_col]) first_col++;
+      if (first_col == framebuffer_tile_columns) break;
+
+      uint8_t last_col = first_col;
+      while (last_col + 1 < framebuffer_tile_columns && changed[last_col + 1]) last_col++;
+
+      const uint16_t x = first_col * framebuffer_tile_width;
+      const uint16_t run_width = last_col + 1 == framebuffer_tile_columns
+          ? NV3001B_SCREEN_WIDTH - x
+          : (last_col - first_col + 1) * framebuffer_tile_width;
+      setAddrWindow(x, y, run_width, rows);
+      beginTransfer();
+      digitalWrite(PIN_TFT_CS, LOW);
+      digitalWrite(PIN_TFT_DC, LOW);
+      transferByte(NV3001B_RAMWR);
+      digitalWrite(PIN_TFT_DC, HIGH);
+      for (uint16_t row = 0; row < rows; row++) {
+        size_t offset = (size_t)(y + row) * NV3001B_SCREEN_WIDTH + x;
+        for (uint16_t col = 0; col < run_width; col++, offset++) {
+#if NV3001B_USE_INDEXED_FRAMEBUFFER
+          const uint16_t pixel = framebuffer_palette[framebuffer[offset]];
+#else
+          const uint16_t pixel = framebuffer[offset];
+#endif
+          transferByte(pixel >> 8);
+          transferByte(pixel & 0xff);
+        }
+      }
+      digitalWrite(PIN_TFT_CS, HIGH);
+      endTransfer();
+
+      for (uint8_t tile_col = first_col; tile_col <= last_col; tile_col++) {
+        const uint16_t tile = tile_row * framebuffer_tile_columns + tile_col;
+        framebuffer_tile_hashes[tile] = current_hashes[tile_col];
+        framebuffer_last_tiles_sent++;
+      }
+      first_col = last_col + 1;
+      yield();
+    }
   }
 
   framebuffer_hashes_valid = true;
   framebuffer_flushes_since_full = force_full ? 0 : framebuffer_flushes_since_full + 1;
+  framebuffer_last_flush_micros = micros() - started;
 }
 #endif
 
@@ -528,10 +588,26 @@ void NV3001BDisplay::fillPhysicalRect(int x, int y, int w, int h) {
 
 #if NV3001B_USE_FRAMEBUFFER
   if (framebuffer) {
+#if NV3001B_USE_INDEXED_FRAMEBUFFER
+    uint8_t index;
+    if (!framebufferPaletteIndex(color, index)) {
+      Serial.println("NV3001B: indexed framebuffer palette exhausted");
+      writeOptionalPin(PIN_TFT_BL, !PIN_TFT_BL_ACTIVE);
+      writeOptionalPin(PIN_TFT_EN, !PIN_TFT_EN_ACTIVE);
+      is_on = false;
+      if (periph_power) periph_power->release();
+      return;
+    }
+    for (int row = 0; row < h; row++) {
+      uint8_t* dest = framebuffer + (y + row) * NV3001B_SCREEN_WIDTH + x;
+      memset(dest, index, w);
+    }
+#else
     for (int row = 0; row < h; row++) {
       uint16_t* dest = framebuffer + (y + row) * NV3001B_SCREEN_WIDTH + x;
       for (int col = 0; col < w; col++) dest[col] = color;
     }
+#endif
     return;
   }
 #endif
@@ -605,14 +681,18 @@ bool NV3001BDisplay::begin() {
   if (!framebuffer_allocation_attempted) {
     framebuffer_allocation_attempted = true;
     const size_t pixels = (size_t)NV3001B_SCREEN_WIDTH * NV3001B_SCREEN_HEIGHT;
+#if NV3001B_USE_INDEXED_FRAMEBUFFER
+    framebuffer = static_cast<uint8_t*>(calloc(pixels, sizeof(uint8_t)));
+#else
     framebuffer = static_cast<uint16_t*>(calloc(pixels, sizeof(uint16_t)));
+#endif
     Serial.print("NV3001B: framebuffer ");
     Serial.print(framebuffer ? "allocated (" : "allocation failed (");
-    Serial.print((unsigned)(pixels * sizeof(uint16_t)));
+    Serial.print((unsigned)(pixels * sizeof(*framebuffer)));
     Serial.println(" bytes)");
   } else if (framebuffer) {
     memset(framebuffer, 0,
-        (size_t)NV3001B_SCREEN_WIDTH * NV3001B_SCREEN_HEIGHT * sizeof(uint16_t));
+        (size_t)NV3001B_SCREEN_WIDTH * NV3001B_SCREEN_HEIGHT * sizeof(*framebuffer));
   }
   if (!framebuffer) {
     writeOptionalPin(PIN_TFT_BL, !PIN_TFT_BL_ACTIVE);
@@ -621,6 +701,10 @@ bool NV3001BDisplay::begin() {
     if (periph_power) periph_power->release();
     return false;
   }
+#if NV3001B_USE_INDEXED_FRAMEBUFFER
+  framebuffer_palette[0] = 0x0000;
+  framebuffer_palette_size = 1;
+#endif
   framebuffer_hashes_valid = false;
   framebuffer_flushes_since_full = 0;
 #else

@@ -5,6 +5,11 @@
 #ifdef NEONPOCKET_UI
   #include "NeonPocketSplash.h"
 #endif
+#ifdef NEONPOCKET_ULTIMATE
+  #include "UltimateUIScreen.h"
+  #include "../UltimateService.h"
+  #include <helpers/ui/NV3001BDisplay.h>
+#endif
 #ifdef RCC6_WEB_AP
   #include <helpers/esp32/SerialWebInterface.h>
   extern SerialWebInterface web_interface;
@@ -19,7 +24,11 @@
 #define BOOT_SCREEN_MILLIS   3000   // stock UI fallback
 
 #ifdef NEONPOCKET_UI
+#ifdef NEONPOCKET_ULTIMATE
+  #define NEON_FRAME_MILLIS       66
+#else
   #define NEON_FRAME_MILLIS       NeonPocketSplash::FRAME_MILLIS
+#endif
   #define NEON_TRANSITION_MILLIS  300
   #define NEON_POWER_CONFIRM_MILLIS 8000
 #endif
@@ -1407,11 +1416,28 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
 #endif
 #endif
 
+#ifdef NEONPOCKET_ULTIMATE
+  splash = nullptr;
+  home = new UltimateUIScreen(this, &rtc_clock, sensors, node_prefs);
+  msg_preview = home;
+#else
   splash = new SplashScreen(this);
   home = new HomeScreen(this, &rtc_clock, sensors, node_prefs);
   msg_preview = new MsgPreviewScreen(this, &rtc_clock);
+#endif
+#ifdef NEONPOCKET_ULTIMATE
+  setCurrScreen(home);
+#else
   setCurrScreen(splash);
+#endif
 }
+
+#if defined(NEONPOCKET_UI) && defined(NEONPOCKET_ULTIMATE)
+void UITask::gotoMsgPreviewScreen() {
+  static_cast<UltimateUIScreen*>(home)->openInbox();
+  setCurrScreen(home);
+}
+#endif
 
 void UITask::showAlert(const char* text, int duration_millis, ColorVal color) {
   strcpy(_alert, text);
@@ -1465,15 +1491,28 @@ bool UITask::handleNeonInput(char c) {
   }
 
   const bool can_confirm = isPowerConfirmArmed() && _display != NULL && _display->isOn() &&
-      curr == home && static_cast<HomeScreen*>(home)->neonIsPowerPage();
+      curr == home &&
+#ifdef NEONPOCKET_ULTIMATE
+      static_cast<UltimateUIScreen*>(home)->isPowerPage();
+#else
+      static_cast<HomeScreen*>(home)->neonIsPowerPage();
+#endif
   if (can_confirm) {
     _power_confirm_until = 0;
     gotoHomeScreen();
+#ifdef NEONPOCKET_ULTIMATE
+    static_cast<UltimateUIScreen*>(home)->requestShutdown();
+#else
     static_cast<HomeScreen*>(home)->neonRequestShutdown();
+#endif
   } else {
     _power_confirm_until = millis() + NEON_POWER_CONFIRM_MILLIS;
     gotoHomeScreen();
+#ifdef NEONPOCKET_ULTIMATE
+    static_cast<UltimateUIScreen*>(home)->showPowerConfirm();
+#else
     static_cast<HomeScreen*>(home)->neonShowPowerConfirm();
+#endif
     startNeonPulse(NEON_RED, NEON_TRANSITION_MILLIS);
   }
   _next_refresh = 0;
@@ -1589,6 +1628,7 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
 #endif
 
 #ifdef NEONPOCKET_UI
+  const bool display_was_off = _display != NULL && !_display->isOn();
   StrHelper::strncpy(_latest_sender, from_name, sizeof(_latest_sender));
   StrHelper::strncpy(_latest_preview, text, sizeof(_latest_preview));
   const ColorVal message_color = _next_message_color;
@@ -1596,12 +1636,19 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
   startNeonPulse(message_color);
 #endif
 
+#ifdef NEONPOCKET_ULTIMATE
+  _msgcount = ultimate_service.getSnapshot().unread_count;
+  const bool hide_locked = ultimate_service.getSettings().private_notifications && display_was_off;
+  if (hide_locked) _private_notification_locked = true;
+  if (!hide_locked) gotoMsgPreviewScreen();
+#else
   const int local_unread = ((MsgPreviewScreen *) msg_preview)->addPreview(path_len, from_name, text);
 #ifdef NEONPOCKET_UI
   _msgcount = local_unread;
   _unread_overflow = ((MsgPreviewScreen *) msg_preview)->hasOverflowed();
 #endif
   setCurrScreen(msg_preview);
+#endif
 
   if (_display != NULL) {
 #ifndef NEONPOCKET_UI
@@ -1680,6 +1727,9 @@ void UITask::loop() {
   char c = 0;
 #ifdef NEONPOCKET_UI
   const unsigned long event_now = millis();
+#ifdef NEONPOCKET_ULTIMATE
+  _msgcount = ultimate_service.getSnapshot().unread_count;
+#endif
   if (_power_confirm_until != 0 && (int32_t)(event_now - _power_confirm_until) >= 0) {
     _power_confirm_until = 0;
     _next_refresh = 0;
@@ -1898,6 +1948,11 @@ void UITask::loop() {
       }
 #endif
       _display->endFrame();
+#ifdef NEONPOCKET_ULTIMATE
+      NV3001BDisplay* native_display = static_cast<NV3001BDisplay*>(_display);
+      ultimate_service.setDisplayTransfer(native_display->lastFlushMicros(),
+                                          native_display->lastTilesSent());
+#endif
     }
 #if AUTO_OFF_MILLIS > 0
 #ifdef KEEP_DISPLAY_ON_USB
@@ -1976,6 +2031,12 @@ char UITask::checkDisplayOn(char c) {
       _display->turnOn();   // turn display on and consume event
       c = 0;
     }
+#ifdef NEONPOCKET_ULTIMATE
+    else if (_private_notification_locked) {
+      _private_notification_locked = false;
+      c = 0;  // first gesture reveals private notification content only
+    }
+#endif
     _auto_off = millis() + AUTO_OFF_MILLIS;   // extend auto-off timer
     _next_refresh = 0;  // trigger refresh
   }
@@ -1983,6 +2044,10 @@ char UITask::checkDisplayOn(char c) {
 }
 
 char UITask::handleLongPress(char c) {
+#ifdef NEONPOCKET_ULTIMATE
+  c = checkDisplayOn(c);
+  if (c == 0) return 0;
+#endif
   if (millis() - ui_started_at < 8000) {   // long press in first 8 seconds since startup -> CLI/rescue
     the_mesh.enterCLIRescue();
     c = 0;   // consume event

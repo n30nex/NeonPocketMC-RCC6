@@ -2,6 +2,9 @@
 #include <stdlib.h>
 #include <Mesh.h>
 #include "MyMesh.h"
+#ifdef NEONPOCKET_ULTIMATE
+  #include "UltimateService.h"
+#endif
 
 // Believe it or not, this std C function is busted on some platforms!
 static uint32_t _atoi(const char* sp) {
@@ -50,6 +53,9 @@ MultiSerialInterface interface_manager;
 #ifdef RCC6_WEB_AP
   #include <helpers/esp32/SerialWebInterface.h>
   SerialWebInterface web_interface;
+#ifdef NEONPOCKET_ULTIMATE
+  #include "UltimateWebApi.h"
+#endif
   #ifndef TCP_PORT
     #define TCP_PORT 5000
   #endif
@@ -131,6 +137,12 @@ static void showFatal(DisplayDriver* display_driver, const char* line1, const ch
   if (!display_driver->isOn()) display_driver->turnOn();
   if (!display_driver->isOn()) return;
   display_driver->startFrame();
+#if defined(NEONPOCKET_UI) && defined(NEONPOCKET_ULTIMATE)
+  char short_version[12];
+  NeonPocketSplash::shortVersion(short_version, sizeof(short_version), FIRMWARE_VERSION);
+  NeonPocketSplash::drawFatal(*display_driver, line1, line2,
+      short_version, FIRMWARE_BUILD_DATE);
+#else
   display_driver->setTextSize(1);
   display_driver->setColor(UIColor::warning_txt);
   display_driver->drawTextCentered(display_driver->width() / 2,
@@ -138,7 +150,45 @@ static void showFatal(DisplayDriver* display_driver, const char* line1, const ch
   display_driver->setColor(UIColor::primary_txt);
   display_driver->drawTextCentered(display_driver->width() / 2,
       display_driver->height() / 2 + 8, line2);
+#endif
   display_driver->endFrame();
+}
+#endif
+
+#if defined(DISPLAY_CLASS) && defined(NEONPOCKET_UI) && defined(NEONPOCKET_ULTIMATE)
+static unsigned long ultimate_boot_elapsed = 0;
+
+static void animateUltimateBootTo(DisplayDriver* display_driver,
+    unsigned long target_elapsed, const char* status) {
+  if (display_driver == nullptr || !display_driver->isOn()) return;
+  if (target_elapsed > NeonPocketSplash::DURATION_MILLIS) {
+    target_elapsed = NeonPocketSplash::DURATION_MILLIS;
+  }
+  if (target_elapsed <= ultimate_boot_elapsed) return;
+
+  char short_version[12];
+  NeonPocketSplash::shortVersion(short_version, sizeof(short_version), FIRMWARE_VERSION);
+  const unsigned long segment_start = millis();
+  const unsigned long segment_elapsed = ultimate_boot_elapsed;
+  while (ultimate_boot_elapsed < target_elapsed) {
+    const unsigned long wall_elapsed = millis() - segment_start;
+    ultimate_boot_elapsed = segment_elapsed + wall_elapsed;
+    if (ultimate_boot_elapsed > target_elapsed) ultimate_boot_elapsed = target_elapsed;
+
+    const unsigned long frame_started = millis();
+    display_driver->startFrame();
+    NeonPocketSplash::drawFrame(*display_driver, ultimate_boot_elapsed,
+        short_version, FIRMWARE_BUILD_DATE, status);
+    display_driver->endFrame();
+
+    if (ultimate_boot_elapsed >= target_elapsed) break;
+    const unsigned long frame_cost = millis() - frame_started;
+    if (frame_cost < NeonPocketSplash::FRAME_MILLIS) {
+      delay(NeonPocketSplash::FRAME_MILLIS - frame_cost);
+    } else {
+      delay(1);
+    }
+  }
 }
 #endif
 
@@ -236,6 +286,9 @@ void setup() {
     disp->drawTextCentered(disp->width() / 2, 28, "Loading...");
 #endif
     disp->endFrame();
+#ifdef NEONPOCKET_ULTIMATE
+    animateUltimateBootTo(disp, 500, "DISPLAY ONLINE");
+#endif
   } else {
     Serial.println("ERROR: required display initialization failed");
   #ifdef DISPLAY_REQUIRED
@@ -250,18 +303,13 @@ void setup() {
   if (!radio_init()) {
     Serial.println("ERROR: radio initialization failed");
 #ifdef DISPLAY_CLASS
-    if (disp != NULL) {
-      disp->startFrame();
-      disp->setTextSize(1);
-      disp->setColor(UIColor::warning_txt);
-      disp->drawTextCentered(disp->width() / 2, disp->height() / 2 - 10, "RADIO INIT FAILED");
-      disp->setColor(UIColor::primary_txt);
-      disp->drawTextCentered(disp->width() / 2, disp->height() / 2 + 8, "Reset device");
-      disp->endFrame();
-    }
+    showFatal(disp, "RADIO INIT FAILED", "Reset device");
 #endif
     halt();
   }
+#if defined(DISPLAY_CLASS) && defined(NEONPOCKET_ULTIMATE)
+  animateUltimateBootTo(disp, 1150, "RADIO LOCKED");
+#endif
 #ifdef RC52_STARTUP_DIAGNOSTICS
   Serial.println("RC52_DIAG stage=radio-ready");
 #endif
@@ -334,6 +382,17 @@ void setup() {
         false
     #endif
   );
+#ifdef NEONPOCKET_ULTIMATE
+  if (!ultimate_service.begin(SPIFFS, rtc_clock, board, store)) {
+  #ifdef DISPLAY_CLASS
+    showFatal(disp, "ULTIMATE STORAGE", "History preserved");
+  #endif
+    halt();
+  }
+#ifdef DISPLAY_CLASS
+  animateUltimateBootTo(disp, 2050, "HISTORY ONLINE");
+#endif
+#endif
 #else
   #error "need to define filesystem"
 #endif
@@ -368,6 +427,9 @@ void setup() {
 #ifdef RCC6_WEB_AP
   board.setInhibitSleep(true);
   web_interface.begin(the_mesh.getNodePrefs()->node_name, TCP_PORT);
+#ifdef NEONPOCKET_ULTIMATE
+  ultimate_web_api.begin(web_interface);
+#endif
   interface_manager.addInterface(InterfaceType::WiFi, &web_interface);
 #endif
 
@@ -394,6 +456,14 @@ void setup() {
   the_mesh.startInterface(interface_manager);
   sensors.begin();
 
+#if defined(DISPLAY_CLASS) && defined(NEONPOCKET_ULTIMATE)
+#ifdef RCC6_WEB_AP
+  animateUltimateBootTo(disp, 2750, "WEB SERVICES");
+#else
+  animateUltimateBootTo(disp, 2750, "BLE ADVERTISING");
+#endif
+#endif
+
 #if ENV_INCLUDE_GPS == 1
   the_mesh.applyGpsPrefs();
 #endif
@@ -404,14 +474,26 @@ void setup() {
 
 #ifdef NEONPOCKET_MEMORY_GATE_BYTES
   if (!probeNeonMemory()) {
-    Serial.println("ERROR: NeonPocket 16 KB memory gate failed");
+    Serial.print("ERROR: NeonPocket memory gate failed: ");
+    Serial.print(NEONPOCKET_MEMORY_GATE_BYTES / 1024);
+    Serial.println(" KB");
   #ifdef DISPLAY_CLASS
     showFatal(disp, "MEMORY GATE FAILED", "Reset device");
   #endif
     halt();
   }
-  Serial.println("NeonPocket: 16 KB memory gate passed");
+  Serial.print("NeonPocket: memory gate passed: ");
+  Serial.print(NEONPOCKET_MEMORY_GATE_BYTES / 1024);
+  Serial.println(" KB");
+#ifdef NEONPOCKET_ULTIMATE
+  ultimate_service.setMemoryGatePassed(true);
+  ultimate_service.refreshStatusNow();
+#endif
   next_neon_memory_probe = millis() + 60000;
+#endif
+
+#if defined(DISPLAY_CLASS) && defined(NEONPOCKET_ULTIMATE)
+  animateUltimateBootTo(disp, NeonPocketSplash::DURATION_MILLIS, "SYSTEM READY");
 #endif
 
   board.onBootComplete();
@@ -422,6 +504,12 @@ void setup() {
 
 void loop() {
   the_mesh.loop();
+#ifdef NEONPOCKET_ULTIMATE
+  ultimate_service.loop();
+#ifdef RCC6_WEB_AP
+  ultimate_web_api.loop();
+#endif
+#endif
   interface_manager.loop();
   sensors.loop();
 #ifdef DISPLAY_CLASS
@@ -443,6 +531,9 @@ void loop() {
   #endif
       halt();
     }
+#ifdef NEONPOCKET_ULTIMATE
+    ultimate_service.setMemoryGatePassed(true);
+#endif
   }
 #endif
 

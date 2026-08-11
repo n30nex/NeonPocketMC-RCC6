@@ -13,6 +13,10 @@ for (const required of [
   "X-RCC6-Session", "application/x-www-form-urlencoded", "Set up local Wi-Fi",
   "meshcore", "localStorage", "rcc6-radio-owner", "rcc6-history-pending-", "syncNextMessage", "MeshCore.js",
   "NeonPocketMC", "brand-pocket",
+  "NEONPOCKET ULTIMATE V2", "Seven days of your mesh", "32 KB MEMORY GATE",
+  "/api/ultimate/status", "/api/ultimate/history", "/api/ultimate/export",
+  "/api/ultimate/settings", "/api/ultimate/location", "/api/ultimate/ota",
+  "SIGNED WEB OTA", "History & one-switch composer",
 ]) {
   if (!html.includes(required)) throw new Error(`Built UI is missing ${required}`);
 }
@@ -23,5 +27,12 @@ if (html.includes("navigator.locks")) throw new Error("Secure-context Web Locks 
 if (appSource.includes(".getWaitingMessages(")) throw new Error("Destructive batch message drain detected");
 for (const required of ["this.drainTask = this.drainRetainedFrames()", "if (!this.ready) throw"]) {
   if (!appSource.includes(required)) throw new Error(`Takeover drain guard is missing ${required}`);
+}
+for (const required of [
+  "async function refreshUltimate()", "function drawUltimateChart(",
+  'ultimateFetch("/api/ultimate/settings"', 'fetch("/api/ultimate/ota"',
+  "navigator.geolocation.getCurrentPosition",
+]) {
+  if (!appSource.includes(required)) throw new Error(`Ultimate WebUI behavior is missing ${required}`);
 }
 console.log(`Verified ${bytes.length}-byte RCC6 WebUI gzip asset`);
