@@ -94,6 +94,9 @@ class UITask : public AbstractUITask {
 
   void sampleDiagnostics();
 #endif
+#ifdef NEONPOCKET_ULTIMATE
+  bool _private_notification_locked = false;
+#endif
 
   void startNeonPulse(ColorVal color, unsigned long duration_millis = 300);
   bool handleNeonInput(char c);
@@ -136,7 +139,12 @@ public:
 
   void gotoHomeScreen() { setCurrScreen(home); }
 #ifdef NEONPOCKET_UI
+#ifdef NEONPOCKET_ULTIMATE
+  void gotoMsgPreviewScreen();
+  bool isPrivateNotificationLocked() const { return _private_notification_locked; }
+#else
   void gotoMsgPreviewScreen() { setCurrScreen(msg_preview); }
+#endif
 #endif
   void showAlert(const char* text, int duration_millis,
       ColorVal color = NEON_LIGHT);

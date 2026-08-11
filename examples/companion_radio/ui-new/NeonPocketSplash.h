@@ -5,7 +5,11 @@
 namespace NeonPocketSplash {
 
 static constexpr unsigned long DURATION_MILLIS = 3200;
+#ifdef NEONPOCKET_ULTIMATE
+static constexpr unsigned long FRAME_MILLIS = 66;
+#else
 static constexpr unsigned long FRAME_MILLIS = 125;
+#endif
 
 static constexpr ColorVal BLACK = 0x0000;
 static constexpr ColorVal CYAN = 0x07FF;
@@ -13,6 +17,7 @@ static constexpr ColorVal COBALT = 0x001F;
 static constexpr ColorVal GRID_BLUE = 0x0008;
 static constexpr ColorVal LIME = 0x07E0;
 static constexpr ColorVal MAGENTA = 0xF81F;
+static constexpr ColorVal RED = 0xF800;
 static constexpr ColorVal WHITE = 0xFFFF;
 
 inline void shortVersion(char* dest, size_t size, const char* version) {
@@ -135,7 +140,8 @@ inline const char* statusFor(unsigned long elapsed) {
 }
 
 inline void drawFrame(DisplayDriver& display, unsigned long elapsed,
-    const char* version, const char* build_date) {
+    const char* version, const char* build_date,
+    const char* status_override = nullptr) {
   if (elapsed > DURATION_MILLIS) elapsed = DURATION_MILLIS;
   const uint8_t frame = elapsed / FRAME_MILLIS;
 
@@ -158,10 +164,11 @@ inline void drawFrame(DisplayDriver& display, unsigned long elapsed,
       (bar_width - 4) * elapsed / DURATION_MILLIS, 4);
 
   display.setColor(elapsed >= 2400 ? LIME : CYAN);
-  display.drawTextCentered(display.width() / 2, 113, statusFor(elapsed));
+  display.drawTextCentered(display.width() / 2, 113,
+      status_override != nullptr ? status_override : statusFor(elapsed));
 
-  const int scan_y = 2 + (frame * 5) % 94;
-  const int scan_x = (frame * 19) % (display.width() + 36) - 36;
+  const int scan_y = 2 + ((elapsed % 3000UL) * 94UL) / 3000UL;
+  const int scan_x = ((elapsed % 1300UL) * (display.width() + 36L)) / 1300L - 36;
   display.setColor(GRID_BLUE);
   display.fillRect(0, scan_y + 2, display.width(), 1);
   display.setColor(COBALT);
@@ -176,6 +183,25 @@ inline void drawFrame(DisplayDriver& display, unsigned long elapsed,
     display.setColor(WHITE);
     line(display, sweep_x, 5, sweep_x - 6, 32);
   }
+}
+
+inline void drawFatal(DisplayDriver& display, const char* line1, const char* line2,
+    const char* version, const char* build_date) {
+  drawBackdrop(display, 24);
+  drawPocket(display, 24);
+  drawTitle(display, 24);
+
+  display.setTextSize(1);
+  display.setColor(WHITE);
+  display.setCursor(10, 84);
+  display.print(version);
+  display.drawTextRightAlign(display.width() - 10, 84, build_date);
+
+  display.setColor(RED);
+  display.drawRect(10, 98, display.width() - 20, 26);
+  display.drawTextCentered(display.width() / 2, 101, line1);
+  display.setColor(WHITE);
+  display.drawTextCentered(display.width() / 2, 113, line2);
 }
 
 }  // namespace NeonPocketSplash

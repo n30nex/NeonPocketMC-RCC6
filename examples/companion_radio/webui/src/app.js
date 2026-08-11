@@ -269,6 +269,9 @@ const state = {
   packets: null,
   rfSamples: [],
   network: null,
+  ultimate: null,
+  ultimateHistory: [],
+  ultimateSettings: null,
   historyNode: "",
 };
 
@@ -526,6 +529,31 @@ async function refreshNetworkStatus() {
   renderNetwork();
 }
 
+async function ultimateFetch(path, options = {}) {
+  const response = await fetch(path, {
+    cache: "no-store",
+    credentials: "same-origin",
+    ...options,
+    headers: { Accept: "application/json", ...(options.headers || {}) },
+  });
+  if (!response.ok) throw new Error(`Ultimate API failed (${response.status})`);
+  return response;
+}
+
+async function refreshUltimate() {
+  try {
+    const [status, history, settings] = await Promise.all([
+      ultimateFetch("/api/ultimate/status").then((response) => response.json()),
+      ultimateFetch("/api/ultimate/history?limit=20").then((response) => response.json()),
+      ultimateFetch("/api/ultimate/settings").then((response) => response.json()),
+    ]);
+    state.ultimate = status;
+    state.ultimateHistory = Array.isArray(history.records) ? history.records : [];
+    state.ultimateSettings = settings;
+  } catch { /* non-Ultimate firmware remains compatible with the standard WebUI */ }
+  renderUltimate();
+}
+
 async function setNetwork(fields) {
   if (!connection.ready || !connection.ownsLease()) throw new Error("RCC6 companion link is not ready");
   const response = await fetch("/api/network", {
@@ -555,6 +583,7 @@ async function syncAll() {
     normalizeTargets();
     await syncMessages();
     await refreshStats();
+    await refreshUltimate();
     renderAll();
   } finally {
     syncing = false;
@@ -813,12 +842,101 @@ function renderMore() {
   $("clear-history-button").disabled = !state.messages.length;
 }
 
+function drawUltimateChart(canvas, rows, keys, colors) {
+  if (!canvas) return;
+  const ratio = devicePixelRatio || 1;
+  const width = Math.max(canvas.clientWidth, 280);
+  const height = Math.max(canvas.clientHeight, 160);
+  canvas.width = width * ratio; canvas.height = height * ratio;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(ratio, ratio); ctx.clearRect(0, 0, width, height);
+  ctx.strokeStyle = "rgba(255,255,255,.055)"; ctx.lineWidth = 1;
+  for (let y = 18; y < height; y += 35) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke(); }
+  const ordered = [...(rows || [])].reverse();
+  if (ordered.length < 2) return;
+  const trafficKeys = keys.filter((key) => key !== "battery");
+  const trafficMaximum = Math.max(1,
+    ...ordered.flatMap((row) => trafficKeys.map((key) => Number(row[key]) || 0)));
+  keys.forEach((key, series) => {
+    ctx.strokeStyle = colors[series]; ctx.lineWidth = series ? 1.6 : 2.4;
+    ctx.shadowColor = colors[series]; ctx.shadowBlur = series ? 4 : 9; ctx.beginPath();
+    ordered.forEach((row, index) => {
+      const x = index * width / (ordered.length - 1);
+      const raw = Number(row[key]) || 0;
+      const scaled = key === "battery" ? Math.max(0, Math.min(1, (raw - 3000) / 1200))
+                                        : raw / trafficMaximum;
+      const y = height - 10 - scaled * (height - 26);
+      index ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    });
+    ctx.stroke(); ctx.shadowBlur = 0;
+  });
+}
+
+function renderUltimate() {
+  const ultimate = state.ultimate;
+  if (!ultimate) return;
+  text("ultimate-gate", ultimate.memoryGate ? "PASS" : "PENDING");
+  $("ultimate-gate-dot").className = ultimate.memoryGate ? "pass" : "";
+  text("ultimate-history-count", formatNumber(ultimate.historyCount || 0));
+  text("ultimate-history-capacity", `${formatNumber(ultimate.historyCapacity || 0)} record capacity`);
+  text("ultimate-free-heap", `${Math.round((ultimate.freeHeap || 0) / 1024)} KB`);
+  text("ultimate-largest", `largest ${Math.round((ultimate.largestAllocation || 0) / 1024)} KB`);
+  text("ultimate-flush", `${((ultimate.displayFlushUs || 0) / 1000).toFixed(1)} ms`);
+  text("ultimate-tiles", `${ultimate.displayTiles || 0} / 176 tiles`);
+  text("ultimate-drops", ultimate.eventDrops || 0);
+  text("ultimate-queue", `outbound ${ultimate.queueDepth || 0} · air ${Math.round((ultimate.airtimeMs || 0) / 60000)}m`);
+
+  const minuteRows = (ultimate.minutes || [])
+    .map((row) => ({ rx: row[1], tx: row[2], battery: row[7] }));
+  const hourRows = (ultimate.hours || [])
+    .map((row) => ({ rx: row[1], tx: row[2], failures: row[3] }));
+  drawUltimateChart($("ultimate-minute-chart"), minuteRows,
+    ["rx", "tx", "battery"], ["#44f08a", "#39e7ff", "#ffb84d"]);
+  drawUltimateChart($("ultimate-week-chart"), hourRows, ["rx", "tx", "failures"], ["#44f08a", "#39e7ff", "#ff5468"]);
+
+  const nodes = ultimate.nodes || [];
+  text("ultimate-node-count", `${nodes.length} radio${nodes.length === 1 ? "" : "s"}`);
+  const nodeList = $("ultimate-node-list"); nodeList.replaceChildren();
+  if (!nodes.length) nodeList.append(element("p", "empty-state", "Listening on the configured preset."));
+  nodes.slice(0, 16).forEach((node) => {
+    const item = element("div", "ultimate-node");
+    item.append(element("strong", "", node.name || "Unnamed radio"),
+                element("b", "", Number.isFinite(node.rssi) ? `${node.rssi} dBm` : `${node.path} hops`),
+                element("span", "", `Role ${node.role} · ${formatAge(node.seen)}`),
+                element("span", "", `${node.packets} packet${node.packets === 1 ? "" : "s"}`));
+    nodeList.append(item);
+  });
+
+  const historyList = $("ultimate-history-list"); historyList.replaceChildren();
+  if (!state.ultimateHistory.length) historyList.append(element("p", "empty-state", "No stored messages."));
+  state.ultimateHistory.forEach((record) => {
+    const item = element("div", "ultimate-record");
+    item.append(element("strong", "", record.sender || (record.kind === 2 ? "#channel" : "Direct")),
+                element("span", "", `${record.incoming ? "Received" : "Sent"} · ${formatAge(record.timestamp)}`),
+                element("p", "", record.text || ""));
+    historyList.append(item);
+  });
+
+  const settings = state.ultimateSettings;
+  if (settings) {
+    $("ultimate-history-cap").value = String(settings.historyCapacity);
+    $("ultimate-cadence").value = String(settings.scanCadenceMs);
+    $("ultimate-private").checked = Boolean(settings.privateNotifications);
+    const phrases = $("ultimate-phrases");
+    if (!phrases.children.length) (settings.quickPhrases || []).forEach((phrase, index) => {
+      const label = element("label", "", `Quick phrase ${index + 1}`);
+      const input = element("input"); input.type = "text"; input.maxLength = 47;
+      input.dataset.phrase = index; input.value = phrase; label.append(input); phrases.append(label);
+    });
+  }
+}
+
 function renderAll() {
   if (state.battery) {
     const volts = `${(state.battery / 1000).toFixed(2)} V`;
     text("battery-chip", volts);
   }
-  renderHome(); renderMessages(); renderNearby(); renderRadio(); renderNetwork(); renderMore();
+  renderHome(); renderMessages(); renderNearby(); renderRadio(); renderNetwork(); renderUltimate(); renderMore();
 }
 
 function showView(view) {
@@ -826,9 +944,10 @@ function showView(view) {
   document.querySelectorAll(".screen").forEach((screen) => screen.classList.toggle("active", screen.dataset.screen === view));
   document.querySelectorAll(".nav button").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
   text("screen-title", view[0].toUpperCase() + view.slice(1));
-  text("screen-kicker", view === "home" ? "COMPANION" : view === "messages" ? "MESH CHAT" : view === "nearby" ? "DISCOVERY" : view === "radio" ? "RF HEALTH" : "DEVICE");
+  text("screen-kicker", view === "home" ? "COMPANION" : view === "messages" ? "MESH CHAT" : view === "nearby" ? "DISCOVERY" : view === "radio" ? "RF HEALTH" : view === "ultimate" ? "ULTIMATE V2" : "DEVICE");
   if (view === "messages" && state.selected) selectTarget(state.selected);
   if (view === "radio") renderRadio();
+  if (view === "ultimate") refreshUltimate();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -963,7 +1082,78 @@ $("clear-history-button").addEventListener("click", () => {
   renderAll();
   toast("Local message history cleared");
 });
-window.addEventListener("resize", () => state.view === "radio" && drawSignalChart());
+$("ultimate-settings-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const quickPhrases = [...document.querySelectorAll("[data-phrase]")].map((input) => input.value);
+  try {
+    const response = await ultimateFetch("/api/ultimate/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        historyCapacity: Number($("ultimate-history-cap").value),
+        scanCadenceMs: Number($("ultimate-cadence").value),
+        privateNotifications: $("ultimate-private").checked,
+        quickPhrases,
+      }),
+    });
+    state.ultimateSettings = await response.json();
+    renderUltimate(); toast("Ultimate settings saved");
+  } catch { toast("Could not save Ultimate settings", "error"); }
+});
+$("ultimate-export").addEventListener("click", () => {
+  window.location.assign("/api/ultimate/export");
+});
+$("ultimate-clear").addEventListener("click", async () => {
+  if (!confirm("Permanently erase the RCC6 /np/ message journal? MeshCore identity and contacts are preserved.")) return;
+  try {
+    await ultimateFetch("/api/ultimate/history", { method: "DELETE", headers: { "X-NP-Confirm": "clear" } });
+    await refreshUltimate(); toast("On-device history cleared", "warn");
+  } catch { toast("History clear failed", "error"); }
+});
+
+async function saveBrowserLocation(latitude, longitude, accuracy) {
+  text("ultimate-location-preview", `${latitude.toFixed(6)}, ${longitude.toFixed(6)} · ±${Math.round(accuracy)} m`);
+  if (!confirm(`Save this location to MeshCore?\n\n${latitude.toFixed(6)}, ${longitude.toFixed(6)}\nAccuracy ±${Math.round(accuracy)} m`)) return;
+  await ultimateFetch("/api/ultimate/location", {
+    method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ latitude, longitude, accuracy }),
+  });
+  toast("MeshCore location saved");
+}
+
+$("ultimate-location").addEventListener("click", () => {
+  const manual = async () => {
+    const value = prompt("Browser location is unavailable on this connection. Enter latitude,longitude:", "");
+    if (!value) return;
+    const [latitude, longitude] = value.split(",").map(Number);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return toast("Enter latitude,longitude", "error");
+    try { await saveBrowserLocation(latitude, longitude, 0); } catch { toast("Location save failed", "error"); }
+  };
+  if (!navigator.geolocation) return manual();
+  navigator.geolocation.getCurrentPosition(
+    (position) => saveBrowserLocation(position.coords.latitude, position.coords.longitude,
+                                      position.coords.accuracy).catch(() => toast("Location save failed", "error")),
+    manual, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
+});
+
+$("ultimate-ota-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const file = $("ultimate-ota-file").files[0];
+  if (!file || !file.name.toLowerCase().endsWith(".npu")) return toast("Choose an Ultimate .npu package", "error");
+  if (!confirm(`Verify and install ${file.name}? The RCC6 will restart only after board, mode, hash, and signature checks pass.`)) return;
+  const body = new FormData(); body.append("package", file, file.name);
+  const button = $("ultimate-ota-form").querySelector("button"); button.disabled = true;
+  try {
+    const response = await fetch("/api/ultimate/ota", { method: "POST", body, credentials: "same-origin" });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.result !== "success") throw new Error(result.result || "upload-failed");
+    toast("Signature verified. Restarting into the new app.", "warn");
+  } catch (error) { toast(`Update rejected: ${error.message}`, "error"); button.disabled = false; }
+});
+window.addEventListener("resize", () => {
+  if (state.view === "radio") drawSignalChart();
+  if (state.view === "ultimate") renderUltimate();
+});
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && state.connected) exclusive(async () => {
     await syncMessages();
@@ -981,5 +1171,9 @@ window.addEventListener("pageshow", (event) => {
 
 bindConnectionEvents(connection);
 renderAll();
-setInterval(() => { text("hero-uptime", formatSession()); if (!document.hidden && state.connected) exclusive(refreshStats).catch(() => {}); }, 30000);
+setInterval(() => {
+  text("hero-uptime", formatSession());
+  if (!document.hidden && state.connected) exclusive(refreshStats).catch(() => {});
+  if (!document.hidden) refreshUltimate();
+}, 30000);
 connection.connect().catch(() => { setLink("offline"); $("boot").classList.add("hidden"); toast("Could not open companion link", "error"); });

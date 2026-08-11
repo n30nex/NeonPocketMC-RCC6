@@ -27,6 +27,10 @@ public:
   bool isFallbackActive() const { return _fallback_active; }
   bool selectSetupAp();
   bool clearStoredNetworkConfig();
+#ifdef NEONPOCKET_ULTIMATE
+  WebServer& httpServer() { return _http_server; }
+  bool authorizeHttpRequest() { return httpAuthorized(); }
+#endif
 
 private:
   static constexpr uint8_t FRAME_QUEUE_SIZE = 8;
