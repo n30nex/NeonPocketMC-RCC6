@@ -49,6 +49,24 @@ The on-device experience includes:
 
 History is stored as plaintext, matching normal MeshCore storage. Private-notification mode hides message bodies while the screen is locked; it does not encrypt the journal. Lowering retention keeps the newest records. Selecting Off stops new writes and does not erase existing history.
 
+## Ultimate on-device gallery
+
+These are direct, CRC-checked captures of the framebuffer rendered by the connected RCC6—not browser mockups or design comps. They retain the native pixel character of the 220×128 panel and are enlarged 4× with nearest-neighbor scaling.
+
+| Home | Inbox |
+| --- | --- |
+| ![Ultimate Home dashboard](docs/images/ultimate/rcc6-ultimate-home.png) | ![Ultimate Inbox overview](docs/images/ultimate/rcc6-ultimate-inbox.png) |
+
+| Network Explorer | Radio |
+| --- | --- |
+| ![Ultimate Network Explorer](docs/images/ultimate/rcc6-ultimate-network.png) | ![Ultimate Radio dashboard](docs/images/ultimate/rcc6-ultimate-radio.png) |
+
+| Tools | Power |
+| --- | --- |
+| ![Ultimate Tools composer](docs/images/ultimate/rcc6-ultimate-tools.png) | ![Ultimate Power confirmation](docs/images/ultimate/rcc6-ultimate-power.png) |
+
+Capture provenance and the unscaled source-frame details are recorded in [`docs/images/ultimate/README.md`](docs/images/ultimate/README.md).
+
 The Web image adds an Ultimate dashboard, charts, history/settings APIs, explicit browser-location transfer, and signed app-only OTA. Location is requested only after pressing the Location button, displayed for confirmation, and then written to the existing MeshCore latitude/longitude preferences. No background tracking is performed.
 
 > [!WARNING]
