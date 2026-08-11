@@ -1747,7 +1747,10 @@ bool UITask::diagnosticInput(char input) {
   if (input == KEY_NEXT) {
     dispatched = checkDisplayOn(KEY_NEXT);
   } else if (input == KEY_ENTER) {
-    dispatched = handleDoubleClick(KEY_PREV);
+    handleDoubleClick(KEY_PREV);
+    _auto_off = millis() + AUTO_OFF_MILLIS;
+    _next_refresh = 0;
+    return true;
   }
   if (dispatched == 0 || curr == nullptr) return false;
   if (!handleNeonInput(dispatched)) curr->handleInput(dispatched);
