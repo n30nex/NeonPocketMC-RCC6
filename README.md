@@ -182,7 +182,7 @@ Ultimate USB CLI Rescue adds `np status`, NDJSON history export, confirmed histo
 - DIO flash mode
 - Protected single-cell 3.7 V Li-ion/LiPo only on `VBAT`; never connect an unregulated solar panel directly
 - Low-battery warning below 3.45 V, cleared above 3.60 V; no automatic low-voltage shutdown
-- RCC6 has no qualified USB-present input. Runtime learning begins only after a sustained falling-voltage trend; pack capacity does not calibrate the ADC. Compare against a multimeter and set the separate signed millivolt offset when needed.
+- RCC6 cannot sense raw VBUS from a charger, but it can detect an enumerated live USB host. A host disconnect clears charger-biased samples and starts a clean discharge-learning window; wall chargers and power banks still rely on the sustained falling-voltage fallback. Pack capacity does not calibrate the ADC. Compare against a multimeter and set the separate signed millivolt offset when needed.
 
 ## Upstream and license
 

@@ -5,6 +5,9 @@
 #include "DataStore.h"
 #include <ultimate_build_sha.h>
 #include <esp_heap_caps.h>
+#if defined(HELTEC_RCC6) && defined(ESP32)
+#include <driver/usb_serial_jtag.h>
+#endif
 #include <stddef.h>
 #include <string.h>
 
@@ -672,7 +675,7 @@ void UltimateService::sampleBatteryProjection() {
   snapshot.battery_projection_valid = false;
   snapshot.battery_trend_mv_per_hour = 0;
   snapshot.battery_runtime_minutes = 0;
-  if (high_resolution_count < 10 || snapshot.battery_mv == 0) return;
+  if (snapshot.usb_host_connected || high_resolution_count < 10 || snapshot.battery_mv == 0) return;
 
   const uint8_t newest_index =
       (high_resolution_head + high_resolution_capacity - 1) % high_resolution_capacity;
@@ -697,6 +700,33 @@ void UltimateService::sampleBatteryProjection() {
     snapshot.battery_runtime_minutes =
         static_cast<uint16_t>(minutes > 65535UL ? 65535UL : minutes);
   }
+}
+
+void UltimateService::sampleUsbHostState() {
+#if defined(HELTEC_RCC6) && defined(ESP32)
+  const bool connected = usb_serial_jtag_is_connected();
+  if (connected) {
+    usb_host_seen = true;
+    snapshot.battery_projection_valid = false;
+    snapshot.battery_trend_mv_per_hour = 0;
+    snapshot.battery_runtime_minutes = 0;
+  }
+  if (!connected && usb_host_connected && usb_host_seen) {
+    high_resolution_head = 0;
+    high_resolution_count = 0;
+    last_metric_rx = snapshot.rx_packets;
+    last_metric_tx = snapshot.tx_packets;
+    last_metric_fail = snapshot.tx_failures;
+    snapshot.battery_projection_valid = false;
+    snapshot.battery_trend_mv_per_hour = 0;
+    snapshot.battery_runtime_minutes = 0;
+    Serial.println("Ultimate: USB host disconnected; battery learning started");
+  }
+  usb_host_connected = connected;
+  snapshot.usb_host_connected = connected;
+#else
+  snapshot.usb_host_connected = false;
+#endif
 }
 
 void UltimateService::sampleStatus() {
@@ -785,6 +815,10 @@ void UltimateService::loop() {
   while (budget-- && popEvent(event)) processEvent(event);
   const uint32_t now = millis();
   refreshDeliveryState(now);
+  if (static_cast<int32_t>(now - next_usb_host_sample) >= 0) {
+    next_usb_host_sample = now + 1000;
+    sampleUsbHostState();
+  }
   if (static_cast<int32_t>(now - next_status_sample) >= 0) {
     next_status_sample = now + 60000;
     sampleStatus();

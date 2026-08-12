@@ -960,8 +960,10 @@ function showNetworkResult(mode) {
 function renderMore() {
   const self = state.self;
   const device = state.device;
+  const model = String(device?.manufacturerModel || "").split("\0", 1)[0]
+    .replace(/[^\x20-\x7e]/g, "").replace(/_/g, " ").trim();
   text("more-name", self?.name || "RCC6");
-  text("more-model", device?.manufacturerModel || "MeshCore Companion");
+  text("more-model", model || "MeshCore Companion");
   text("more-firmware", device?.firmwareVer != null ? `Protocol ${device.firmwareVer}` : "—");
   text("more-build", device?.firmware_build_date || "—");
   text("more-key", self?.publicKey ? `${hex(self.publicKey, 8)}…` : "—");
@@ -1017,7 +1019,9 @@ function renderUltimate() {
   const profileNames = ["BALANCED", "FIELD", "BATTERY"];
   const trend = Number(ultimate.batteryTrendMvPerHour || 0);
   text("ultimate-battery", `${((ultimate.batteryMv || 0) / 1000).toFixed(2)} V · ${trend > 0 ? "+" : ""}${trend} mV/h`);
-  text("ultimate-runtime", ultimate.batteryRuntimeMinutes > 0
+  text("ultimate-runtime", ultimate.usbHostConnected
+    ? "USB host connected · unplug to start a clean discharge window"
+    : ultimate.batteryRuntimeMinutes > 0
     ? `about ${Math.floor(ultimate.batteryRuntimeMinutes / 60)}h ${ultimate.batteryRuntimeMinutes % 60}m to 3.45 V`
     : `${profileNames[ultimate.powerProfile] || "BALANCED"} · ${ultimate.animationFrameMs || 66} ms frames`);
   const delivery = ultimate.delivery || {};

@@ -194,6 +194,8 @@ void UltimateWebApi::handleStatus() {
   json += ultimate_service.getSettings().battery_capacity_mah;
   json += F(",\"batteryProjectionValid\":");
   json += s.battery_projection_valid ? F("true") : F("false");
+  json += F(",\"usbHostConnected\":");
+  json += s.usb_host_connected ? F("true") : F("false");
   json += F(",\"historyCount\":"); json += s.history_count;
   json += F(",\"historyCapacity\":"); json += s.history_capacity;
   json += F(",\"unread\":"); json += s.unread_count;

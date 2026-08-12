@@ -34,7 +34,8 @@ for (const required of [
   "function drawActivityBars(", "function drawMeshMap(", "function advertisedLocation(",
   'ultimateFetch("/api/ultimate/settings"', 'fetch("/api/ultimate/ota"',
   "navigator.geolocation.getCurrentPosition", "batteryTrendMvPerHour",
-  "batteryRuntimeMinutes", "batteryCapacityMah", "ultimate.delivery",
+  "batteryRuntimeMinutes", "batteryCapacityMah", "usbHostConnected", "ultimate.delivery",
+  'split("\\0", 1)',
 ]) {
   if (!appSource.includes(required)) throw new Error(`Ultimate WebUI behavior is missing ${required}`);
 }

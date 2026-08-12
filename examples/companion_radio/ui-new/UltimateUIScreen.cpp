@@ -429,7 +429,9 @@ void UltimateUIScreen::renderPowerRoot(DisplayDriver& display) {
   display.setColor(ultimate_cyan);
   display.drawTextRightAlign(207, 45, powerProfileLabel(settings.power_profile));
   display.setColor(ultimate_white);
-  if (status.battery_projection_valid) {
+  if (status.usb_host_connected) {
+    strcpy(line, "USB HOST CONNECTED");
+  } else if (status.battery_projection_valid) {
     snprintf(line, sizeof(line), "TREND %+d mV/h", status.battery_trend_mv_per_hour);
   } else {
     strcpy(line, "TREND LEARNING");
@@ -440,7 +442,9 @@ void UltimateUIScreen::renderPowerRoot(DisplayDriver& display) {
     display.setColor(ultimate_cyan);
     display.drawTextRightAlign(207, 62, line);
   }
-  if (status.battery_runtime_minutes) {
+  if (status.usb_host_connected) {
+    strcpy(line, "UNPLUG TO START LEARNING");
+  } else if (status.battery_runtime_minutes) {
     snprintf(line, sizeof(line), "EST ~%uh %02um TO 3.45V",
              status.battery_runtime_minutes / 60, status.battery_runtime_minutes % 60);
   } else if (status.battery_projection_valid && status.battery_trend_mv_per_hour >= 3) {

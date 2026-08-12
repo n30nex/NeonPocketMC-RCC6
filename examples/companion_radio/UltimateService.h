@@ -155,6 +155,7 @@ struct UltimateSnapshot {
   bool last_signal_valid;
   bool memory_gate_passed;
   bool battery_projection_valid;
+  bool usb_host_connected;
 };
 
 struct UltimateSettings {
@@ -288,6 +289,9 @@ class UltimateService {
   uint32_t last_metric_tx = 0;
   uint32_t last_metric_fail = 0;
   uint32_t last_signal_millis = 0;
+  uint32_t next_usb_host_sample = 0;
+  bool usb_host_seen = false;
+  bool usb_host_connected = false;
 
   static uint32_t crc32(const void* data, size_t length);
   static bool validCapacity(uint16_t capacity);
@@ -315,6 +319,7 @@ class UltimateService {
   void sampleStatus();
   void sampleHighResolution();
   void sampleBatteryProjection();
+  void sampleUsbHostState();
   void refreshDeliveryState(uint32_t now);
   bool saveMetricBucket(uint16_t slot);
   void loadMetrics();

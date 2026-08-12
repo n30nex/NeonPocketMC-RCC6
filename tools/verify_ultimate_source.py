@@ -56,7 +56,8 @@ required = {
         all(value in ui for value in ["RESUME DRAFT", "PIN TARGET", "{battery}", "{location}", "{name}"]),
     "battery intelligence": all(value in service for value in
         ["battery_trend_mv_per_hour", "battery_runtime_minutes", "battery_calibration_mv",
-         "battery_capacity_mah", "power_profile"]) and
+         "battery_capacity_mah", "usb_host_connected", "power_profile"]) and
+        "usb_serial_jtag_is_connected" in service_cpp and
         "set.batterysize " in mesh and "np battery size " in mesh,
     "triple press navigation": "handleTriplePress" in ui and "markAllRead" in service_cpp and
         "handleTripleClick" in ui_task and "3X CLEAR" in ui,

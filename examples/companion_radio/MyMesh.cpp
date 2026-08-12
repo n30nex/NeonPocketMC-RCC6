@@ -2256,7 +2256,7 @@ void MyMesh::checkCLIRescueCmd() {
       Serial.println("  np phrase <1..8> <text>");
     } else if (strcmp(cli_command, "np status") == 0) {
       const UltimateSnapshot& status = ultimate_service.getSnapshot();
-      Serial.printf("Ultimate %s history=%u/%u unread=%u rx=%lu tx=%lu fail=%lu heap=%lu largest=%lu gate=%s battery=%umV/%umAh trend=%+dmV/h profile=%u delivery=%u\n",
+      Serial.printf("Ultimate %s history=%u/%u unread=%u rx=%lu tx=%lu fail=%lu heap=%lu largest=%lu gate=%s battery=%umV/%umAh trend=%+dmV/h usb-host=%s profile=%u delivery=%u\n",
                     NEONPOCKET_ULTIMATE_VERSION, status.history_count, status.history_capacity,
                     status.unread_count, (unsigned long)status.rx_packets,
                     (unsigned long)status.tx_packets, (unsigned long)status.tx_failures,
@@ -2264,6 +2264,7 @@ void MyMesh::checkCLIRescueCmd() {
                     status.memory_gate_passed ? "pass" : "pending", status.battery_mv,
                     ultimate_service.getSettings().battery_capacity_mah,
                     status.battery_trend_mv_per_hour,
+                    status.usb_host_connected ? "connected" : "absent",
                     ultimate_service.getSettings().power_profile,
                     static_cast<uint8_t>(ultimate_service.getDelivery().state));
     } else if (strcmp(cli_command, "np history export") == 0) {
