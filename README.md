@@ -32,6 +32,7 @@ Ultimate v2 ships as two separate images. They share the same standalone six-are
 | Target | Connectivity |
 | --- | --- |
 | `heltec_rcc6_ultimate_companion_ble` | Standard secure MeshCore BLE companion |
+| `heltec_rcc6_ultimate_companion_usb` | Native-USB binary MeshCore companion |
 | `heltec_rcc6_ultimate_companion_web` | WPA setup AP, local 2.4 GHz Wi-Fi, authenticated WebUI, and TCP/5000 |
 
 The 220×128 TFT runs through a 28,160-byte indexed framebuffer with 20×8 changed-tile transfers. It targets 15 FPS while awake and automatically eases to 10, 8, or 7 FPS only when display transfer time, queue pressure, heap headroom, or the selected Battery profile requires it. It fails closed if its framebuffer, palette, or post-service 32 KiB memory gate cannot be allocated. The demo-scene startup follows real display, radio, storage/history, transport, and memory stages; fatal startup errors remain visible in the same branded renderer.
