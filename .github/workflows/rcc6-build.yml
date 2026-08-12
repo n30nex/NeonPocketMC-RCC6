@@ -72,6 +72,9 @@ jobs:
           - environment: heltec_rcc6_ultimate_companion_ble
             ultimate: true
             ota: false
+          - environment: heltec_rcc6_ultimate_companion_usb
+            ultimate: true
+            ota: false
           - environment: heltec_rcc6_ultimate_companion_web
             ultimate: true
             ota: true
