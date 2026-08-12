@@ -16,7 +16,8 @@ for (const required of [
   "NEONPOCKET ULTIMATE V2", "Seven days of your mesh", "32 KB MEMORY GATE",
   "/api/ultimate/status", "/api/ultimate/history", "/api/ultimate/export",
   "/api/ultimate/settings", "/api/ultimate/location", "/api/ultimate/ota",
-  "SIGNED WEB OTA", "History & one-switch composer",
+  "SIGNED WEB OTA", "History & one-switch composer", "BATTERY INTELLIGENCE",
+  "LATEST DELIVERY", "Power profile", "Battery calibration offset",
 ]) {
   if (!html.includes(required)) throw new Error(`Built UI is missing ${required}`);
 }
@@ -31,7 +32,8 @@ for (const required of ["this.drainTask = this.drainRetainedFrames()", "if (!thi
 for (const required of [
   "async function refreshUltimate()", "function drawUltimateChart(",
   'ultimateFetch("/api/ultimate/settings"', 'fetch("/api/ultimate/ota"',
-  "navigator.geolocation.getCurrentPosition",
+  "navigator.geolocation.getCurrentPosition", "batteryTrendMvPerHour",
+  "batteryRuntimeMinutes", "ultimate.delivery",
 ]) {
   if (!appSource.includes(required)) throw new Error(`Ultimate WebUI behavior is missing ${required}`);
 }

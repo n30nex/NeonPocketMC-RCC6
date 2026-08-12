@@ -23,6 +23,14 @@
 #endif
 #define BOOT_SCREEN_MILLIS   3000   // stock UI fallback
 
+static uint32_t displayAutoOffMillis() {
+#ifdef NEONPOCKET_ULTIMATE
+  return ultimate_service.getDisplayTimeoutMillis();
+#else
+  return AUTO_OFF_MILLIS;
+#endif
+}
+
 #ifdef NEONPOCKET_UI
 #ifdef NEONPOCKET_ULTIMATE
   #define NEON_FRAME_MILLIS       66
@@ -31,6 +39,16 @@
 #endif
   #define NEON_TRANSITION_MILLIS  300
   #define NEON_POWER_CONFIRM_MILLIS 8000
+#endif
+
+#ifdef NEONPOCKET_UI
+static uint16_t neonFrameMillis() {
+#ifdef NEONPOCKET_ULTIMATE
+  return ultimate_service.getRecommendedFrameMillis();
+#else
+  return NEON_FRAME_MILLIS;
+#endif
+}
 #endif
 
 #ifdef PIN_STATUS_LED
@@ -1368,7 +1386,7 @@ void UITask::sampleDiagnostics() {
 void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* node_prefs) {
   _display = display;
   _sensors = sensors;
-  _auto_off = millis() + AUTO_OFF_MILLIS;
+  _auto_off = millis() + displayAutoOffMillis();
 
 #if defined(PIN_USER_BTN)
   user_btn.begin();
@@ -1474,7 +1492,7 @@ void UITask::startNeonPulse(ColorVal color, unsigned long duration_millis) {
     _pending_pulse_duration = 0;
     _pulse_started = now;
     _pulse_until = now + duration_millis;
-    if (_display != NULL) _auto_off = now + AUTO_OFF_MILLIS;
+    if (_display != NULL) _auto_off = now + displayAutoOffMillis();
   }
   _next_refresh = 0;
 }
@@ -1657,7 +1675,7 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
     }
 #endif
     if (_display->isOn()) {
-    _auto_off = millis() + AUTO_OFF_MILLIS;  // extend the auto-off timer
+    _auto_off = millis() + displayAutoOffMillis();  // extend the auto-off timer
     _next_refresh = 100;  // trigger refresh
     }
   }
@@ -1738,7 +1756,7 @@ void UITask::loop() {
     _wake_pending = false;
     if (!_display->isOn()) _display->turnOn();
     const unsigned long wake_now = millis();
-    _auto_off = wake_now + AUTO_OFF_MILLIS;
+    _auto_off = wake_now + displayAutoOffMillis();
     if (_pending_pulse_duration > 0) {
       _pulse_started = wake_now;
       _pulse_until = wake_now + _pending_pulse_duration;
@@ -1886,7 +1904,7 @@ void UITask::loop() {
 #else
     curr->handleInput(c);
 #endif
-    _auto_off = millis() + AUTO_OFF_MILLIS;   // extend auto-off timer
+    _auto_off = millis() + displayAutoOffMillis();   // extend auto-off timer
     _next_refresh = 100;  // trigger refresh
   }
 
@@ -1918,13 +1936,13 @@ void UITask::loop() {
         _display->drawRect(12, y, _display->width() - 24, 40);
         _display->drawTextCentered(_display->width() / 2, y + 12, _alert);
       }
-      if (pulse_active && (((now - _pulse_started) / NEON_FRAME_MILLIS) % 2 == 0)) {
+      if (pulse_active && (((now - _pulse_started) / neonFrameMillis()) % 2 == 0)) {
         _display->setColor(_pulse_color);
         _display->fillRect(0, 0, _display->width(), 3);
         _display->fillRect(0, _display->height() - 3, _display->width(), 3);
       }
       if (alert_animating || pulse_active) {
-        _next_refresh = now + NEON_FRAME_MILLIS;
+        _next_refresh = now + neonFrameMillis();
       } else if (alert_active) {
         const unsigned long page_refresh = now + delay_millis;
         _next_refresh = (int32_t)(page_refresh - _alert_expiry) < 0
@@ -1961,7 +1979,7 @@ void UITask::loop() {
     // because OLED panels burn in quickly; only enable for LCD targets or
     // where the display is replaceable.
     if (board.isExternalPowered()) {
-      _auto_off = millis() + AUTO_OFF_MILLIS;
+      _auto_off = millis() + displayAutoOffMillis();
     }
 #endif
     if ((int32_t)(millis() - _auto_off) >= 0) {
@@ -2037,7 +2055,7 @@ char UITask::checkDisplayOn(char c) {
       c = 0;  // first gesture reveals private notification content only
     }
 #endif
-    _auto_off = millis() + AUTO_OFF_MILLIS;   // extend auto-off timer
+    _auto_off = millis() + displayAutoOffMillis();   // extend auto-off timer
     _next_refresh = 0;  // trigger refresh
   }
   return c;

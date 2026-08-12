@@ -75,6 +75,8 @@ class UltimateUIScreen : public UIScreen {
   uint8_t scan_item = 0;
   bool uppercase = false;
   uint32_t next_scan = 0;
+  uint32_t draft_save_due = 0;
+  bool draft_dirty = false;
   bool shutdown_pending = false;
   bool history_clear_armed = false;
   uint32_t transition_started = 0;
@@ -114,6 +116,12 @@ class UltimateUIScreen : public UIScreen {
   void handleToolAction();
   void handleKeyboardSelect();
   void appendComposer(char value);
+  void startCompose(const ComposeTarget& target, bool restore_draft = false);
+  void markDraftDirty();
+  void persistDraft();
+  bool restoreDraft();
+  void expandPhrase(const char* source);
+  bool isPinnedTarget(const ComposeTarget& target) const;
   bool sendComposer();
   const char* areaTitle() const;
 

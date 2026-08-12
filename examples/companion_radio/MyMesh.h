@@ -244,6 +244,8 @@ private:
   int16_t _ultimate_last_rx_rssi = 0;
   int8_t _ultimate_last_rx_snr_q4 = 0;
   uint8_t _ultimate_last_rx_payload = 0;
+  uint8_t _ultimate_delivery_hash[MAX_HASH_SIZE] = {};
+  bool _ultimate_delivery_active = false;
 #endif
 
   ContactsIterator _iter;

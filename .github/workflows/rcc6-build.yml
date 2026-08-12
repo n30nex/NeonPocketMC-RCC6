@@ -149,10 +149,10 @@ jobs:
           key="$RUNNER_TEMP/ultimate-ota-private.pem"
           printf '%s\n' "$ULTIMATE_OTA_SIGNING_KEY_PEM" > "$key"
           chmod 600 "$key"
-          package="$out/NeonPocketMC-RCC6-Ultimate-Web-v2.0.0-rc.1.npu"
+          package="$out/NeonPocketMC-RCC6-Ultimate-Web-v2.1.0-rc.1.npu"
           python tools/package_ultimate_ota.py pack \
             --app "$out/firmware.bin" --output "$package" --key "$key" \
-            --version 2.0.0-rc.1 \
+            --version 2.1.0-rc.1 \
             --git-sha "${{ github.event.pull_request.head.sha || github.sha }}"
           rm -f "$key"
           python tools/package_ultimate_ota.py verify \

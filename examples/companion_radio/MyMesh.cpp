@@ -3,6 +3,15 @@
 #include <Arduino.h> // needed for PlatformIO
 #include <Mesh.h>
 
+static constexpr uint8_t displayHopCount(uint8_t encoded_path_len) {
+  return encoded_path_len == 0xFF ? 0xFF : (encoded_path_len & 0x3F);
+}
+
+static_assert(displayHopCount(0x80) == 0, "3-byte zero-hop path must display as zero hops");
+static_assert(displayHopCount(0x81) == 1, "3-byte one-hop path must display as one hop");
+static_assert(displayHopCount(0xC2) == 2, "encoded path must display only its hop count");
+static_assert(displayHopCount(0xFF) == 0xFF, "direct-route sentinel must remain unknown");
+
 #ifdef RCC6_WEB_AP
 #include <helpers/esp32/SerialWebInterface.h>
 extern SerialWebInterface web_interface;
@@ -309,6 +318,14 @@ void MyMesh::logTx(mesh::Packet* packet, int len) {
 #ifdef NEONPOCKET_ULTIMATE
   ultimate_service.enqueueRadio(UltimateRadioEvent::Tx, packet->getPayloadType(), 0, 0,
                                 _radio->getEstAirtimeFor(len));
+  if (_ultimate_delivery_active) {
+    uint8_t packet_hash[MAX_HASH_SIZE];
+    packet->calculatePacketHash(packet_hash);
+    if (memcmp(packet_hash, _ultimate_delivery_hash, sizeof(packet_hash)) == 0) {
+      ultimate_service.markDeliveryOnAir();
+      _ultimate_delivery_active = false;
+    }
+  }
 #else
   (void) len;
 #endif
@@ -327,6 +344,14 @@ void MyMesh::logTxFail(mesh::Packet* packet, int len) {
 #ifdef NEONPOCKET_ULTIMATE
   ultimate_service.enqueueRadio(UltimateRadioEvent::TxFailed, packet->getPayloadType(), 0, 0,
                                 _radio->getEstAirtimeFor(len));
+  if (_ultimate_delivery_active) {
+    uint8_t packet_hash[MAX_HASH_SIZE];
+    packet->calculatePacketHash(packet_hash);
+    if (memcmp(packet_hash, _ultimate_delivery_hash, sizeof(packet_hash)) == 0) {
+      ultimate_service.markDeliveryFailed();
+      _ultimate_delivery_active = false;
+    }
+  }
 #else
   (void) len;
 #endif
@@ -399,7 +424,8 @@ void MyMesh::onDiscoveredContact(ContactInfo &contact, bool is_new, uint8_t path
 #ifdef NEONPOCKET_ULTIMATE
   const bool attributable = _ultimate_last_rx_payload == PAYLOAD_TYPE_ADVERT &&
       millis() - _ultimate_last_rx_millis <= 250;
-  ultimate_service.enqueueNode(contact.id.pub_key, contact.name, contact.type, path_len,
+  ultimate_service.enqueueNode(contact.id.pub_key, contact.name, contact.type,
+                               displayHopCount(path_len),
                                getRTCClock()->getCurrentTime(),
                                attributable ? _ultimate_last_rx_rssi : 0,
                                attributable ? _ultimate_last_rx_snr_q4 : 0,
@@ -480,6 +506,9 @@ ContactInfo*  MyMesh::processAck(const uint8_t *data) {
       uint32_t trip_time = _ms->getMillis() - expected_ack_table[i].msg_sent;
       memcpy(&out_frame[5], &trip_time, 4);
       _serial->writeFrame(out_frame, 9);
+#ifdef NEONPOCKET_ULTIMATE
+      ultimate_service.markDeliveryAcked(expected_ack_table[i].ack, trip_time);
+#endif
 
       // NOTE: the same ACK can be received multiple times!
       expected_ack_table[i].ack = 0; // clear expected hash, now that we have received ACK
@@ -503,6 +532,7 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
   memcpy(&out_frame[i], from.id.pub_key, 6);
   i += 6; // just 6-byte prefix
   uint8_t path_len = out_frame[i++] = pkt->isRouteFlood() ? pkt->path_len : 0xFF;
+  const uint8_t hop_count = displayHopCount(path_len);
   out_frame[i++] = txt_type;
   memcpy(&out_frame[i], &sender_timestamp, 4);
   i += 4;
@@ -532,7 +562,7 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
     const bool attributable = millis() - _ultimate_last_rx_millis <= 250;
     ultimate_service.enqueueMessage(
         UltimateMessageKind::Direct, true, 0, from.id.pub_key, from.name, text,
-        sender_timestamp, path_len, attributable ? _ultimate_last_rx_rssi : 0,
+        sender_timestamp, hop_count, attributable ? _ultimate_last_rx_rssi : 0,
         attributable ? _ultimate_last_rx_snr_q4 : (int8_t)(pkt->getSNR() * 4));
   }
 #endif
@@ -541,7 +571,7 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
     memcpy(_ui_reply_pubkey_prefix, from.id.pub_key, sizeof(_ui_reply_pubkey_prefix));
     _ui_reply_target = UIReplyTarget::Direct;
 #endif
-    _ui->newMsgWithEvent(path_len, from.name, text, offline_queue_len,
+    _ui->newMsgWithEvent(hop_count, from.name, text, offline_queue_len,
                          UIEventType::contactMessage);
     if (!_serial->isConnected()) {
       _ui->notify(UIEventType::contactMessage);
@@ -636,6 +666,7 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
 #endif
   out_frame[i++] = channel_idx;
   uint8_t path_len = out_frame[i++] = pkt->isRouteFlood() ? pkt->path_len : 0xFF;
+  const uint8_t hop_count = displayHopCount(path_len);
 
   out_frame[i++] = TXT_TYPE_PLAIN;
   memcpy(&out_frame[i], &timestamp, 4);
@@ -674,11 +705,11 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
   const bool attributable = millis() - _ultimate_last_rx_millis <= 250;
   ultimate_service.enqueueMessage(
       UltimateMessageKind::Channel, true, channel_idx, nullptr, channel_name, text,
-      timestamp, path_len, attributable ? _ultimate_last_rx_rssi : 0,
+      timestamp, hop_count, attributable ? _ultimate_last_rx_rssi : 0,
       attributable ? _ultimate_last_rx_snr_q4 : (int8_t)(pkt->getSNR() * 4));
 #endif
   if (_ui) {
-    _ui->newMsgWithEvent(path_len, channel_name, text, offline_queue_len,
+    _ui->newMsgWithEvent(hop_count, channel_name, text, offline_queue_len,
                          UIEventType::channelMessage);
   }
 #endif
@@ -2201,12 +2232,15 @@ void MyMesh::checkCLIRescueCmd() {
 #ifdef NEONPOCKET_ULTIMATE
     } else if (strcmp(cli_command, "np status") == 0) {
       const UltimateSnapshot& status = ultimate_service.getSnapshot();
-      Serial.printf("Ultimate %s history=%u/%u unread=%u rx=%lu tx=%lu fail=%lu heap=%lu largest=%lu gate=%s\n",
+      Serial.printf("Ultimate %s history=%u/%u unread=%u rx=%lu tx=%lu fail=%lu heap=%lu largest=%lu gate=%s battery=%umV trend=%+dmV/h profile=%u delivery=%u\n",
                     NEONPOCKET_ULTIMATE_VERSION, status.history_count, status.history_capacity,
                     status.unread_count, (unsigned long)status.rx_packets,
                     (unsigned long)status.tx_packets, (unsigned long)status.tx_failures,
                     (unsigned long)status.free_heap, (unsigned long)status.largest_allocation,
-                    status.memory_gate_passed ? "pass" : "pending");
+                    status.memory_gate_passed ? "pass" : "pending", status.battery_mv,
+                    status.battery_trend_mv_per_hour,
+                    ultimate_service.getSettings().power_profile,
+                    static_cast<uint8_t>(ultimate_service.getDelivery().state));
     } else if (strcmp(cli_command, "np history export") == 0) {
       exportUltimateHistoryToSerial();
     } else if (strcmp(cli_command, "np history clear CONFIRM") == 0) {
@@ -2229,6 +2263,28 @@ void MyMesh::checkCLIRescueCmd() {
       updated.scan_cadence_ms = atoi(&cli_command[11]);
       Serial.println(ultimate_service.updateSettings(updated)
                          ? "  > scan cadence saved" : "  Error: cadence must be 450/650/900/1200");
+    } else if (memcmp(cli_command, "np power ", 9) == 0) {
+      UltimateSettings updated = ultimate_service.getSettings();
+      const char* profile = &cli_command[9];
+      if (strcmp(profile, "balanced") == 0) {
+        updated.power_profile = static_cast<uint8_t>(UltimatePowerProfile::Balanced);
+      } else if (strcmp(profile, "field") == 0) {
+        updated.power_profile = static_cast<uint8_t>(UltimatePowerProfile::Field);
+      } else if (strcmp(profile, "battery") == 0) {
+        updated.power_profile = static_cast<uint8_t>(UltimatePowerProfile::Battery);
+      } else {
+        Serial.println("  Error: use np power balanced|field|battery");
+        cli_command[0] = 0;
+        return;
+      }
+      Serial.println(ultimate_service.updateSettings(updated)
+                         ? "  > power profile saved" : "  Error: settings write failed");
+    } else if (memcmp(cli_command, "np battery offset ", 18) == 0) {
+      UltimateSettings updated = ultimate_service.getSettings();
+      updated.battery_calibration_mv = atoi(&cli_command[18]);
+      Serial.println(ultimate_service.updateSettings(updated)
+                         ? "  > battery calibration saved"
+                         : "  Error: offset must be -300..300 mV");
     } else if (memcmp(cli_command, "np phrase ", 10) == 0 && cli_command[10] >= '1' && cli_command[10] <= '8' &&
                cli_command[11] == ' ') {
       UltimateSettings updated = ultimate_service.getSettings();
@@ -2474,8 +2530,18 @@ bool MyMesh::sendUltimateDirect(const uint8_t pubkey_prefix[6], const char* text
   const uint32_t timestamp = getRTCClock()->getCurrentTimeUnique();
   uint32_t expected_ack = 0;
   uint32_t est_timeout = 0;
-  const int result = sendMessage(*recipient, timestamp, 0, text, expected_ack, est_timeout);
-  if (result == MSG_SEND_FAILED) return false;
+  const int queued_before = _mgr->getOutboundTotal();
+  _ultimate_delivery_active = false;
+  memset(_ultimate_delivery_hash, 0, sizeof(_ultimate_delivery_hash));
+  const int result = sendMessage(*recipient, timestamp, 0, text, expected_ack,
+                                 est_timeout, _ultimate_delivery_hash);
+  if (result == MSG_SEND_FAILED || _mgr->getOutboundTotal() <= queued_before) {
+    _ultimate_delivery_active = false;
+    return false;
+  }
+  _ultimate_delivery_active = true;
+  ultimate_service.startDelivery(static_cast<uint8_t>(UltimateMessageKind::Direct),
+      recipient->name, text, expected_ack, est_timeout);
   if (expected_ack) {
     expected_ack_table[next_ack_idx].msg_sent = _ms->getMillis();
     expected_ack_table[next_ack_idx].ack = expected_ack;
@@ -2492,11 +2558,20 @@ bool MyMesh::sendUltimateChannel(uint8_t channel_index, const char* text) {
   ChannelDetails channel;
   if (!getChannel(channel_index, channel)) return false;
   const uint32_t timestamp = getRTCClock()->getCurrentTimeUnique();
-  if (!sendGroupMessage(timestamp, channel.channel, _prefs.node_name, text, strlen(text))) {
+  const int queued_before = _mgr->getOutboundTotal();
+  _ultimate_delivery_active = false;
+  memset(_ultimate_delivery_hash, 0, sizeof(_ultimate_delivery_hash));
+  if (!sendGroupMessage(timestamp, channel.channel, _prefs.node_name, text,
+                        strlen(text), _ultimate_delivery_hash) ||
+      _mgr->getOutboundTotal() <= queued_before) {
+    _ultimate_delivery_active = false;
     return false;
   }
+  _ultimate_delivery_active = true;
   char label[32];
   snprintf(label, sizeof(label), "#%s", channel.name);
+  ultimate_service.startDelivery(static_cast<uint8_t>(UltimateMessageKind::Channel),
+                                 label, text, 0, 0);
   ultimate_service.enqueueMessage(UltimateMessageKind::Channel, false, channel_index,
       nullptr, label, text, timestamp, 0xFF, 0, 0);
   return true;

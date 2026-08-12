@@ -23,7 +23,7 @@ This is a direct, checksum-verified capture of the RCC6 220×128 framebuffer run
 
 ## Release status
 
-The proven v1 line remains available as [`v1.2.0-rc.2`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.2). Ultimate Companion v2 is a separate experimental `v2.0.0-rc.1` candidate; it does not replace the stable images. Use only files attached to a named release—short-lived Actions artifacts are development builds.
+The proven v1 line remains available as [`v1.2.0-rc.2`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.2), and the first Ultimate build remains available as [`v2.0.0-rc.1`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v2.0.0-rc.1). The separate experimental [`v2.1.0-rc.1`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v2.1.0-rc.1) release does not replace either proven line. Use only files attached to a named release—short-lived Actions artifacts are development builds.
 
 ## Ultimate Companion v2
 
@@ -34,15 +34,17 @@ Ultimate v2 ships as two separate images. They share the same standalone six-are
 | `heltec_rcc6_ultimate_companion_ble` | Standard secure MeshCore BLE companion |
 | `heltec_rcc6_ultimate_companion_web` | WPA setup AP, local 2.4 GHz Wi-Fi, authenticated WebUI, and TCP/5000 |
 
-The 220×128 TFT runs through a 28,160-byte indexed framebuffer with 20×8 changed-tile transfers. It renders at 15 FPS while awake, uses eased page motion, and fails closed if its framebuffer, palette, or post-service 32 KiB memory gate cannot be allocated. The demo-scene startup now follows real display, radio, storage/history, transport, and memory stages; fatal startup errors remain visible in the same branded renderer.
+The 220×128 TFT runs through a 28,160-byte indexed framebuffer with 20×8 changed-tile transfers. It targets 15 FPS while awake and automatically eases to 10, 8, or 7 FPS only when display transfer time, queue pressure, heap headroom, or the selected Battery profile requires it. It fails closed if its framebuffer, palette, or post-service 32 KiB memory gate cannot be allocated. The demo-scene startup follows real display, radio, storage/history, transport, and memory stages; fatal startup errors remain visible in the same branded renderer.
 
 The on-device experience includes:
 
 - Home, Inbox, Network Explorer, Radio/Diagnostics, Tools, and Power areas;
 - direct and `#channel` threads with persistent local unread state and full paged messages;
-- 8 editable quick phrases plus an optional row/column one-switch keyboard;
+- 8 editable quick phrases with `{name}`, `{battery}`, and `{location}` expansion, a pinned recent target, crash-safe draft resume, and an optional row/column one-switch keyboard;
+- exact latest on-device delivery receipts: queued, on air, transmitted, acknowledged with round-trip time, no ACK, unconfirmed, or failed;
 - recent radios on the configured MeshCore preset only—no automatic retuning;
-- live RF, queue, heap, storage, battery, display-transfer, error, and airtime metrics;
+- live RF, queue, heap, storage, calibrated battery, display-transfer, error, and airtime metrics;
+- Balanced, Field, and Battery profiles with 60-second, 5-minute, and 30-second TFT timeouts, plus ten-minute voltage trend and time-to-3.45 V estimates;
 - two hours of minute samples in RAM and 168 persisted hourly buckets;
 - an independent `/np/` message journal with Off, 128, 512, or 2,048-record retention;
 - NDJSON history export and separately confirmed erasure.
@@ -64,6 +66,10 @@ These are direct, CRC-checked captures of the framebuffer rendered by the connec
 | Tools | Power |
 | --- | --- |
 | ![Ultimate Tools composer](docs/images/ultimate/rcc6-ultimate-tools.png) | ![Ultimate Power confirmation](docs/images/ultimate/rcc6-ultimate-power.png) |
+
+| Composer targets | Quick phrases |
+| --- | --- |
+| ![Ultimate composer target picker](docs/images/ultimate/rcc6-ultimate-composer-targets.png) | ![Ultimate quick phrase picker](docs/images/ultimate/rcc6-ultimate-composer-phrases.png) |
 
 Capture provenance and the unscaled source-frame details are recorded in [`docs/images/ultimate/README.md`](docs/images/ultimate/README.md).
 
@@ -147,12 +153,12 @@ Replace `COM21` with the port actually shown by your computer. Use the Web/AP fi
 Normal Ultimate installation remains application-only at `0x10000`; it does not replace the bootloader, partition table, NVS, or SPIFFS:
 
 ```text
-python -m esptool --chip esp32c6 --port COM21 write-flash 0x10000 NeonPocketMC-RCC6-Ultimate-v2.0.0-rc.1-BLE-app.bin
+python -m esptool --chip esp32c6 --port COM21 write-flash 0x10000 NeonPocketMC-RCC6-Ultimate-v2.1.0-rc.1-BLE-app.bin
 ```
 
 Use the Web filename for Web mode. Identity-preserving merged recovery images are provided separately and are for bootloader/partition recovery at `0x0`, not ordinary updates. Never erase the whole chip.
 
-The WebUI accepts only a signed `NeonPocketMC-RCC6-Ultimate-Web-v2.0.0-rc.1.npu` package. Firmware verifies the RCC6 target, Web mode, application length, SHA-256, and Ed25519 signature before selecting the inactive OTA application slot. The existing bootloader does not guarantee automatic rollback from a boot-breaking app; keep USB access and the matching app/recovery images available. BLE firmware has no Web OTA and is updated over USB only.
+The WebUI accepts only a signed `NeonPocketMC-RCC6-Ultimate-Web-v2.1.0-rc.1.npu` package. Firmware verifies the RCC6 target, Web mode, application length, SHA-256, and Ed25519 signature before selecting the inactive OTA application slot. The existing bootloader does not guarantee automatic rollback from a boot-breaking app; keep USB access and the matching app/recovery images available. BLE firmware has no Web OTA and is updated over USB only.
 
 ## Build
 
@@ -167,7 +173,7 @@ pio run -e heltec_rcc6_ultimate_companion_ble
 pio run -e heltec_rcc6_ultimate_companion_web
 ```
 
-Ultimate USB CLI Rescue adds `np status`, NDJSON history export, confirmed history clear, retention, privacy, cadence, and quick-phrase commands. Enter CLI Rescue with the normal early-boot Hold gesture; type `help` and see [the Ultimate v2 guide](docs/releases/2.0-RC1.md).
+Ultimate USB CLI Rescue adds `np status`, NDJSON history export, confirmed history clear, retention, privacy, cadence, and quick-phrase commands. Enter CLI Rescue with the normal early-boot Hold gesture; type `help` and see [the Ultimate 2.1 guide](docs/releases/2.1-RC1.md).
 
 ## Hardware and power notes
 

@@ -83,6 +83,19 @@ const char* otaResultName(UltimateWebApi::OtaResult result) {
   }
 }
 
+const char* deliveryStateName(UltimateDeliveryState state) {
+  switch (state) {
+    case UltimateDeliveryState::Queued: return "queued";
+    case UltimateDeliveryState::OnAir: return "on-air";
+    case UltimateDeliveryState::Transmitted: return "transmitted";
+    case UltimateDeliveryState::Acked: return "acked";
+    case UltimateDeliveryState::NoAck: return "no-ack";
+    case UltimateDeliveryState::Unconfirmed: return "unconfirmed";
+    case UltimateDeliveryState::Failed: return "failed";
+    default: return "idle";
+  }
+}
+
 struct HistoryJsonContext {
   String* json;
   bool first;
@@ -175,12 +188,20 @@ void UltimateWebApi::handleStatus() {
   json += F(",\"storageUsedKb\":"); json += s.storage_used_kb;
   json += F(",\"storageTotalKb\":"); json += s.storage_total_kb;
   json += F(",\"batteryMv\":"); json += s.battery_mv;
+  json += F(",\"batteryTrendMvPerHour\":"); json += s.battery_trend_mv_per_hour;
+  json += F(",\"batteryRuntimeMinutes\":"); json += s.battery_runtime_minutes;
+  json += F(",\"batteryProjectionValid\":");
+  json += s.battery_projection_valid ? F("true") : F("false");
   json += F(",\"historyCount\":"); json += s.history_count;
   json += F(",\"historyCapacity\":"); json += s.history_capacity;
   json += F(",\"unread\":"); json += s.unread_count;
   json += F(",\"queueDepth\":"); json += s.outbound_queue_depth;
   json += F(",\"displayFlushUs\":"); json += s.display_flush_micros;
+  json += F(",\"displayFlushEmaUs\":"); json += s.display_flush_ema_micros;
   json += F(",\"displayTiles\":"); json += s.display_tiles_sent;
+  json += F(",\"animationFrameMs\":"); json += s.animation_frame_millis;
+  json += F(",\"displayTimeoutMs\":"); json += s.display_timeout_millis;
+  json += F(",\"powerProfile\":"); json += ultimate_service.getSettings().power_profile;
   json += F(",\"memoryGate\":"); json += s.memory_gate_passed ? F("true") : F("false");
   json += F(",\"memoryGateLastPass\":"); json += s.memory_gate_last_pass_seconds;
   json += F(",\"signal\":");
@@ -188,6 +209,14 @@ void UltimateWebApi::handleStatus() {
     json += F("{\"rssi\":"); json += s.last_rssi_dbm;
     json += F(",\"snr\":"); json += String(s.last_snr_quarter_db / 4.0f, 2); json += '}';
   } else json += F("null");
+
+  const UltimateDeliverySnapshot& delivery = ultimate_service.getDelivery();
+  json += F(",\"delivery\":{\"state\":\""); json += deliveryStateName(delivery.state);
+  json += F("\",\"target\":\""); json += jsonEscape(delivery.target);
+  json += F("\",\"roundTripMs\":"); json += delivery.round_trip_millis;
+  json += F(",\"historySequence\":"); json += delivery.history_sequence;
+  json += F(",\"ackExpected\":"); json += delivery.ack_expected ? F("true") : F("false");
+  json += '}';
 
   json += F(",\"nodes\":[");
   for (uint8_t i = 0; i < ultimate_service.getNetworkCount(); i++) {
@@ -272,6 +301,8 @@ void UltimateWebApi::handleGetSettings() {
   String json = F("{\"historyCapacity\":"); json += settings.history_capacity;
   json += F(",\"scanCadenceMs\":"); json += settings.scan_cadence_ms;
   json += F(",\"privateNotifications\":"); json += settings.private_notifications ? F("true") : F("false");
+  json += F(",\"batteryCalibrationMv\":"); json += settings.battery_calibration_mv;
+  json += F(",\"powerProfile\":"); json += settings.power_profile;
   json += F(",\"quickPhrases\":[");
   for (uint8_t i = 0; i < 8; i++) {
     if (i) json += ',';
@@ -289,6 +320,8 @@ void UltimateWebApi::handlePutSettings() {
   bool boolean;
   if (extractNumber(body, "historyCapacity", number)) updated.history_capacity = number;
   if (extractNumber(body, "scanCadenceMs", number)) updated.scan_cadence_ms = number;
+  if (extractNumber(body, "batteryCalibrationMv", number)) updated.battery_calibration_mv = number;
+  if (extractNumber(body, "powerProfile", number)) updated.power_profile = number;
   if (extractBool(body, "privateNotifications", boolean)) updated.private_notifications = boolean;
   int at = body.indexOf("\"quickPhrases\"");
   if (at >= 0 && (at = body.indexOf('[', at)) >= 0) {

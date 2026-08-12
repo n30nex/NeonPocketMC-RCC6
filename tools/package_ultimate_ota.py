@@ -117,7 +117,7 @@ def self_test() -> None:
         app.write_bytes(b"\xE9" + bytes(range(1, 128)))
         pack(argparse.Namespace(
             app=app, output=package, key=private_key, target="heltec_rcc6",
-            mode="web", version="2.0.0-rc.1", git_sha="1" * 40,
+            mode="web", version="2.1.0-rc.1", git_sha="1" * 40,
         ))
         verify(argparse.Namespace(
             package=package, public_key=public_key,
