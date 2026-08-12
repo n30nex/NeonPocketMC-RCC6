@@ -23,7 +23,7 @@ This is a direct, checksum-verified capture of the RCC6 220×128 framebuffer run
 
 ## Release status
 
-The proven v1 line remains available as [`v1.2.0-rc.2`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.2), and the first Ultimate build remains available as [`v2.0.0-rc.1`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v2.0.0-rc.1). Current main builds the separate experimental `v2.1.0-rc.1` candidate; it does not replace either published line. Use only files attached to a named release—short-lived Actions artifacts are development builds.
+The proven v1 line remains available as [`v1.2.0-rc.2`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.2), and the first Ultimate build remains available as [`v2.0.0-rc.1`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v2.0.0-rc.1). The separate experimental [`v2.1.0-rc.1`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v2.1.0-rc.1) release does not replace either proven line. Use only files attached to a named release—short-lived Actions artifacts are development builds.
 
 ## Ultimate Companion v2
 
