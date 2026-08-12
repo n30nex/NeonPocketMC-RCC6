@@ -564,7 +564,7 @@ static void loadUltimateCaptureDemo() {
       "Aurora", "Meet at the lookout at 19:30. Bring the spare antenna.",
       now > 41 ? now - 41 : now, 0, -71, 38);
   ultimate_service.enqueueMessage(UltimateMessageKind::Channel, true, 1, bot_key,
-      "#bot", "Repeater health: 128 packets received, zero errors.",
+      "#bot", "Repeater health looks great: zero recent errors.",
       now > 16 ? now - 16 : now, 2, -96, 19);
   ultimate_service.enqueueMessage(UltimateMessageKind::Direct, false, 0, aurora_key,
       "Aurora", "On my way. ETA ten minutes.", now, 0, 0, 0);
