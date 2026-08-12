@@ -4,7 +4,7 @@
 
 # NeonPocketMC-RCC6
 
-Experimental MeshCore **1.17.1** companion firmware for the **Heltec RadioCore RCC6** with its attached **220×128 NV3001B TFT**.
+Experimental companion firmware for the **Heltec RadioCore RCC6** with its attached **220×128 NV3001B TFT**. It uses the official MeshCore **1.17.0** source baseline plus the post-release SX126x boosted-RX-gain fix intended for the next receiver maintenance release.
 
 > [!CAUTION]
 > **RCC6 only—do not flash RC32, RC52, or other RadioCore hardware.** Attach a suitable antenna before transmitting.
@@ -23,7 +23,7 @@ This is a direct, checksum-verified capture of the RCC6 220×128 framebuffer run
 
 ## Release status
 
-The proven v1 line remains available as [`v1.2.0-rc.2`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.2), and the first Ultimate build remains available as [`v2.0.0-rc.1`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v2.0.0-rc.1). The separate experimental [`v2.1.0-rc.1`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v2.1.0-rc.1) release does not replace either proven line. Use only files attached to a named release—short-lived Actions artifacts are development builds.
+The proven v1 line remains available as [`v1.2.0-rc.2`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.2), and earlier Ultimate builds remain available as [`v2.0.0-rc.1`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v2.0.0-rc.1) and [`v2.1.0-rc.1`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v2.1.0-rc.1). **Ultimate v2.2 RC1** adds the five-area Web dashboard, real hourly bar charts, and the coordinate-backed offline mesh map. Use only files attached to a named release—short-lived Actions artifacts are development builds.
 
 ## Ultimate Companion v2
 
@@ -73,7 +73,7 @@ These are direct, CRC-checked captures of the framebuffer rendered by the connec
 
 Capture provenance and the unscaled source-frame details are recorded in [`docs/images/ultimate/README.md`](docs/images/ultimate/README.md).
 
-The Web image adds an Ultimate dashboard, charts, history/settings APIs, explicit browser-location transfer, and signed app-only OTA. Location is requested only after pressing the Location button, displayed for confirmation, and then written to the existing MeshCore latitude/longitude preferences. No background tracking is performed.
+The Web image is organized into Dashboard, Messages, Map, Radio, and Device. It adds 24-hour and seven-day packet bars, delivery/history health, persistent device history, explicit browser-location transfer, and signed app-only OTA. The offline map plots only valid coordinates included in MeshCore adverts; unlocated contacts remain listed without an invented marker. Location is requested only after pressing the Location button, displayed for confirmation, and then written to the existing MeshCore latitude/longitude preferences. No background tracking is performed.
 
 > [!WARNING]
 > **TCP port 5000 is always enabled in the Ultimate Web image. Any client on the trusted local network can access the complete MeshCore companion/admin protocol, including sensitive administration commands.** HTTP authentication and the browser API allowlist do not protect raw TCP. Use Web mode only on a trusted private LAN.
@@ -89,7 +89,7 @@ The repository builds two separate application images:
 
 Both images include the native NeonPocket display, animated branded startup, local direct and `#channel` unread inbox, Nearby and Radio views, flood-scoped Advert action, 60-second screen timeout, battery warning, and one-button controls. RCC6 builds also add a cached Diagnostics page and a six-choice auto-scanning Quick Reply page that replies to the latest direct sender or channel without blocking radio callbacks.
 
-This branch is based on MeshCore **1.17.1**. The Ultimate implementation started from exact NeonPocketMC-RCC6 main commit `bbf585e65afb1044d2ed91079f96d3b0e3325279`; each build embeds its own exact Git SHA.
+This branch uses the official MeshCore **1.17.0** baseline plus the relevant post-release SX126x boosted-RX-gain persistence fix (`6f491f30`). It does not claim a nonexistent official 1.17.1 tag. Each build embeds its own exact Git SHA.
 
 ## Storage behavior
 
@@ -153,12 +153,12 @@ Replace `COM21` with the port actually shown by your computer. Use the Web/AP fi
 Normal Ultimate installation remains application-only at `0x10000`; it does not replace the bootloader, partition table, NVS, or SPIFFS:
 
 ```text
-python -m esptool --chip esp32c6 --port COM21 write-flash 0x10000 NeonPocketMC-RCC6-Ultimate-v2.1.0-rc.1-BLE-app.bin
+python -m esptool --chip esp32c6 --port COM21 write-flash 0x10000 NeonPocketMC-RCC6-Ultimate-v2.2.0-rc.1-BLE-app.bin
 ```
 
 Use the Web filename for Web mode. Identity-preserving merged recovery images are provided separately and are for bootloader/partition recovery at `0x0`, not ordinary updates. Never erase the whole chip.
 
-The WebUI accepts only a signed `NeonPocketMC-RCC6-Ultimate-Web-v2.1.0-rc.1.npu` package. Firmware verifies the RCC6 target, Web mode, application length, SHA-256, and Ed25519 signature before selecting the inactive OTA application slot. The existing bootloader does not guarantee automatic rollback from a boot-breaking app; keep USB access and the matching app/recovery images available. BLE firmware has no Web OTA and is updated over USB only.
+The WebUI accepts only a signed `NeonPocketMC-RCC6-Ultimate-Web-v2.2.0-rc.1.npu` package. Firmware verifies the RCC6 target, Web mode, application length, SHA-256, and Ed25519 signature before selecting the inactive OTA application slot. The existing bootloader does not guarantee automatic rollback from a boot-breaking app; keep USB access and the matching app/recovery images available. BLE firmware has no Web OTA and is updated over USB only.
 
 ## Build
 
@@ -173,7 +173,7 @@ pio run -e heltec_rcc6_ultimate_companion_ble
 pio run -e heltec_rcc6_ultimate_companion_web
 ```
 
-Ultimate USB CLI Rescue adds `np status`, NDJSON history export, confirmed history clear, retention, privacy, cadence, and quick-phrase commands. Enter CLI Rescue with the normal early-boot Hold gesture; type `help` and see [the Ultimate 2.1 guide](docs/releases/2.1-RC1.md).
+Ultimate USB CLI Rescue adds `np status`, NDJSON history export, confirmed history clear, retention, privacy, cadence, and quick-phrase commands. Enter CLI Rescue with the normal early-boot Hold gesture; type `help` and see [the Ultimate 2.2 guide](docs/releases/2.2-RC1.md).
 
 ## Hardware and power notes
 

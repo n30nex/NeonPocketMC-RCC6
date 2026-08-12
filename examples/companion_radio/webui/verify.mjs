@@ -9,14 +9,14 @@ const bytes = Uint8Array.from([...body[1].matchAll(/0x([0-9a-f]{2})/g)], (match)
 const html = gunzipSync(bytes).toString("utf8");
 
 for (const required of [
-  "Home", "Messages", "Nearby", "Radio", "More", "/api/frame", "/api/network",
+  "Dashboard", "Messages", "Mesh map", "Radio", "Device", "/api/frame", "/api/network",
   "X-RCC6-Session", "application/x-www-form-urlencoded", "Set up local Wi-Fi",
   "meshcore", "localStorage", "rcc6-radio-owner", "rcc6-history-pending-", "syncNextMessage", "MeshCore.js",
   "NeonPocketMC", "brand-pocket",
-  "NEONPOCKET ULTIMATE V2", "Seven days of your mesh", "32 KB MEMORY GATE",
+  "RCC6 Ultimate", "LAST 24 HOURS", "ADVERTISED LOCATIONS", "MEMORY CHECK",
   "/api/ultimate/status", "/api/ultimate/history", "/api/ultimate/export",
   "/api/ultimate/settings", "/api/ultimate/location", "/api/ultimate/ota",
-  "SIGNED WEB OTA", "History & one-switch composer", "BATTERY INTELLIGENCE",
+  "SIGNED UPDATE", "NeonPocket settings", "BATTERY TREND",
   "LATEST DELIVERY", "Power profile", "Battery calibration offset",
 ]) {
   if (!html.includes(required)) throw new Error(`Built UI is missing ${required}`);
@@ -31,6 +31,7 @@ for (const required of ["this.drainTask = this.drainRetainedFrames()", "if (!thi
 }
 for (const required of [
   "async function refreshUltimate()", "function drawUltimateChart(",
+  "function drawActivityBars(", "function drawMeshMap(", "function advertisedLocation(",
   'ultimateFetch("/api/ultimate/settings"', 'fetch("/api/ultimate/ota"',
   "navigator.geolocation.getCurrentPosition", "batteryTrendMvPerHour",
   "batteryRuntimeMinutes", "ultimate.delivery",
