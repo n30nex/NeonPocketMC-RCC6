@@ -65,7 +65,7 @@ def main() -> None:
     parser.add_argument("--partitions", type=Path, required=True)
     parser.add_argument("--elf", type=Path, required=True)
     parser.add_argument("--sha", required=True)
-    parser.add_argument("--version", default="2.1.0-rc.1")
+    parser.add_argument("--version", required=True)
     args = parser.parse_args()
 
     app = args.app.read_bytes()

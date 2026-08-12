@@ -136,7 +136,8 @@ jobs:
             --bootloader "$out/bootloader.bin" \
             --partitions "$out/partitions.bin" \
             --elf "$out/firmware.elf" \
-            --sha "${{ github.event.pull_request.head.sha || github.sha }}"
+            --sha "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --version 2.2.0-rc.1
 
       - name: Build and verify signed Ultimate Web package
         if: matrix.ota && github.event_name != 'pull_request'
