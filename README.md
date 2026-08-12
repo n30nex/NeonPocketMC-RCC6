@@ -67,6 +67,10 @@ These are direct, CRC-checked captures of the framebuffer rendered by the connec
 | --- | --- |
 | ![Ultimate Tools composer](docs/images/ultimate/rcc6-ultimate-tools.png) | ![Ultimate Power confirmation](docs/images/ultimate/rcc6-ultimate-power.png) |
 
+| Composer targets | Quick phrases |
+| --- | --- |
+| ![Ultimate composer target picker](docs/images/ultimate/rcc6-ultimate-composer-targets.png) | ![Ultimate quick phrase picker](docs/images/ultimate/rcc6-ultimate-composer-phrases.png) |
+
 Capture provenance and the unscaled source-frame details are recorded in [`docs/images/ultimate/README.md`](docs/images/ultimate/README.md).
 
 The Web image adds an Ultimate dashboard, charts, history/settings APIs, explicit browser-location transfer, and signed app-only OTA. Location is requested only after pressing the Location button, displayed for confirmation, and then written to the existing MeshCore latitude/longitude preferences. No background tracking is performed.
