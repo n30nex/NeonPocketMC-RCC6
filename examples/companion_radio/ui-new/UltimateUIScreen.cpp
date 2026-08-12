@@ -371,7 +371,8 @@ void UltimateUIScreen::renderNetworkRoot(DisplayDriver& display) {
     display.setColor(NEON_GREEN);
     display.drawTextEllipsized(116, 52, 88, node->name);
     display.setColor(NEON_LIGHT);
-    snprintf(count, sizeof(count), "%u hops", node->path_len);
+    snprintf(count, sizeof(count), "%u hop%s", node->path_len,
+             node->path_len == 1 ? "" : "s");
     display.drawTextEllipsized(116, 72, 88, count);
   } else {
     display.setColor(NEON_ORANGE);
@@ -602,7 +603,8 @@ void UltimateUIScreen::renderNetworkList(DisplayDriver& display) {
       display.drawTextEllipsized(14, y + 3, 140, node->name);
       char value[20];
       if (node->signal_attributable) snprintf(value, sizeof(value), "%ddBm", node->rssi_dbm);
-      else snprintf(value, sizeof(value), "%u hops", node->path_len);
+      else snprintf(value, sizeof(value), "%u hop%s", node->path_len,
+                    node->path_len == 1 ? "" : "s");
       display.setColor(node->signal_attributable ? NEON_LIGHT : NEON_ORANGE);
       display.drawTextRightAlign(211, y + 3, value);
     }
@@ -622,7 +624,8 @@ void UltimateUIScreen::renderNetworkDetail(DisplayDriver& display) {
   display.setColor(NEON_BLUE);
   display.drawRect(8, 39, 204, 66);
   display.setColor(NEON_LIGHT);
-  snprintf(line, sizeof(line), "ROLE %u   PATH %u hops", node->role, node->path_len);
+  snprintf(line, sizeof(line), "ROLE %u   PATH %u hop%s", node->role,
+           node->path_len, node->path_len == 1 ? "" : "s");
   display.setCursor(13, 45);
   display.print(line);
   const uint32_t now = rtc->getCurrentTime();
