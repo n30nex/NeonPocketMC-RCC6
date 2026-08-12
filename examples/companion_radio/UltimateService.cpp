@@ -27,6 +27,15 @@ bool generationAfter(uint32_t lhs, uint32_t rhs) {
 
 UltimateService ultimate_service;
 
+static constexpr uint8_t displayHopCount(uint8_t encoded_path_len) {
+  return encoded_path_len == 0xFF ? 0xFF : (encoded_path_len & 0x3F);
+}
+
+static_assert(displayHopCount(0x80) == 0, "3-byte zero-hop path must display as zero hops");
+static_assert(displayHopCount(0x81) == 1, "3-byte one-hop path must display as one hop");
+static_assert(displayHopCount(0xC2) == 2, "encoded path must display only its hop count");
+static_assert(displayHopCount(0xFF) == 0xFF, "direct-route sentinel must remain unknown");
+
 const char* UltimateService::getBuildSha() const {
   return ULTIMATE_BUILD_SHA;
 }
@@ -307,8 +316,10 @@ bool UltimateService::readSlot(uint16_t slot, UltimateHistoryRecord& record) con
   }
   const bool complete = file.read(reinterpret_cast<uint8_t*>(&record), sizeof(record)) == sizeof(record);
   file.close();
-  return complete && record.magic == history_magic &&
+  const bool valid = complete && record.magic == history_magic &&
       record.crc32 == crc32(&record, offsetof(UltimateHistoryRecord, crc32));
+  if (valid) record.path_len = displayHopCount(record.path_len);
+  return valid;
 }
 
 bool UltimateService::writeSlot(uint16_t slot, const UltimateHistoryRecord& record) {
@@ -332,7 +343,7 @@ bool UltimateService::appendRecord(const PendingEvent& event) {
   record.timestamp = event.timestamp;
   record.flags = event.flags;
   record.kind = event.subtype;
-  record.path_len = event.path_len;
+  record.path_len = displayHopCount(event.path_len);
   record.snr_quarter_db = event.snr_quarter_db;
   record.rssi_dbm = event.rssi_dbm;
   record.target = event.target;
@@ -405,7 +416,7 @@ bool UltimateService::enqueueMessage(
   event.flags = incoming ? ULTIMATE_HISTORY_INCOMING : ULTIMATE_HISTORY_READ;
   event.target = target;
   event.timestamp = timestamp ? timestamp : (clock ? clock->getCurrentTime() : 0);
-  event.path_len = path_len;
+  event.path_len = displayHopCount(path_len);
   event.rssi_dbm = rssi_dbm;
   event.snr_quarter_db = snr_quarter_db;
   if (peer_key) memcpy(event.peer_key, peer_key, sizeof(event.peer_key));
@@ -441,7 +452,7 @@ bool UltimateService::enqueueNode(
   event.type = PendingType::Node;
   event.flags = signal_attributable ? 1 : 0;
   event.role = role;
-  event.path_len = path_len;
+  event.path_len = displayHopCount(path_len);
   event.timestamp = timestamp;
   event.rssi_dbm = rssi_dbm;
   event.snr_quarter_db = snr_quarter_db;
@@ -471,7 +482,7 @@ void UltimateService::updateNetwork(const PendingEvent& event) {
   node.last_seen = event.timestamp;
   node.packet_count++;
   node.role = event.role;
-  node.path_len = event.path_len;
+  node.path_len = displayHopCount(event.path_len);
   node.signal_attributable = event.flags != 0;
   node.rssi_dbm = node.signal_attributable ? event.rssi_dbm : 0;
   node.snr_quarter_db = node.signal_attributable ? event.snr_quarter_db : 0;
@@ -857,6 +868,7 @@ uint16_t UltimateService::visitHistory(uint32_t before_sequence, uint16_t limit,
         record.magic == history_magic &&
         record.crc32 == crc32(&record, offsetof(UltimateHistoryRecord, crc32));
     if (valid && (before_sequence == 0 || record.sequence < before_sequence)) {
+      record.path_len = displayHopCount(record.path_len);
       visited++;
       if (!visitor(record, context)) break;
     }
@@ -887,6 +899,7 @@ bool UltimateService::getThreadMessage(uint8_t kind, uint8_t target,
         ? candidate.target == target
         : peer_key != nullptr && memcmp(candidate.peer_key, peer_key, sizeof(candidate.peer_key)) == 0;
     if (same && matched++ == ordinal) {
+      candidate.path_len = displayHopCount(candidate.path_len);
       record = candidate;
       found = true;
       break;
@@ -917,6 +930,7 @@ bool UltimateService::markRead(uint32_t sequence) {
       return true;
     }
     record.flags |= ULTIMATE_HISTORY_READ;
+    record.path_len = displayHopCount(record.path_len);
     record.crc32 = crc32(&record, offsetof(UltimateHistoryRecord, crc32));
     const bool written = file.seek(position) &&
         file.write(reinterpret_cast<const uint8_t*>(&record), sizeof(record)) == sizeof(record);

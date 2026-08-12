@@ -45,7 +45,12 @@ required = {
     "encoded hop count decoding": all(value in mesh for value in
         ["displayHopCount(0x80) == 0", "displayHopCount(0x81) == 1",
          "displayHopCount(0xC2) == 2", "displayHopCount(0xFF) == 0xFF"]) and
-        mesh.count("displayHopCount(path_len)") >= 3,
+        mesh.count("displayHopCount(path_len)") >= 3 and
+        all(value in service_cpp for value in
+            ["displayHopCount(0x80) == 0", "record.path_len = displayHopCount(record.path_len)",
+             "record.path_len = displayHopCount(event.path_len)",
+             "event.path_len = displayHopCount(path_len)",
+             "node.path_len = displayHopCount(event.path_len)"]),
     "persistent composer": all(value in service for value in
         ["UltimateComposerState", "setPinnedTarget", "saveDraft"]) and
         all(value in ui for value in ["RESUME DRAFT", "PIN TARGET", "{battery}", "{location}", "{name}"]),
