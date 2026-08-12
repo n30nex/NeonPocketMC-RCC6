@@ -580,6 +580,10 @@ static void loadUltimateCaptureDemo() {
   ultimate_service.enqueueRadio(UltimateRadioEvent::Rx, 0, -71, 38, 0);
   ultimate_service.enqueueRadio(UltimateRadioEvent::Tx, 0, 0, 0, 842);
   for (uint8_t i = 0; i < 20; ++i) ultimate_service.loop();
+  ultimate_service.startDelivery(static_cast<uint8_t>(UltimateMessageKind::Direct),
+      "Aurora", "On my way. ETA ten minutes.", 0x13572468UL, 8000);
+  ultimate_service.markDeliveryOnAir();
+  ultimate_service.markDeliveryAcked(0x13572468UL, 1240);
   ultimate_service.refreshStatusNow();
   ui_task.gotoHomeScreen();
   Serial.println("NPOK DEMO");

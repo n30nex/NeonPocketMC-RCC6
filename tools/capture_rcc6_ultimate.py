@@ -87,7 +87,8 @@ def contact_sheet(frames: list[tuple[str, Image.Image]]) -> Image.Image:
     scale = 3
     tile_width = WIDTH * scale
     tile_height = HEIGHT * scale + 34
-    sheet = Image.new("RGB", (tile_width * 2 + 36, tile_height * 3 + 48), "#05070d")
+    rows = (len(frames) + 1) // 2
+    sheet = Image.new("RGB", (tile_width * 2 + 36, tile_height * rows + 24), "#05070d")
     draw = ImageDraw.Draw(sheet)
     for index, (label, image) in enumerate(frames):
         column = index % 2
@@ -123,6 +124,25 @@ def main() -> int:
             if index + 1 < len(PAGES):
                 command(port, "NP NEXT", rb"NPOK NEXT")
                 time.sleep(args.settle)
+
+        # Return to Tools and capture the refined v2.1 composer flow.
+        for _ in range(5):
+            command(port, "NP NEXT", rb"NPOK NEXT")
+            time.sleep(0.15)
+        command(port, "NP ACTION", rb"NPOK ACTION")
+        time.sleep(args.settle)
+        command(port, "NP NEXT", rb"NPOK NEXT")
+        command(port, "NP ACTION", rb"NPOK ACTION")
+        time.sleep(args.settle)
+        for label in ("composer-targets", "composer-phrases"):
+            frame = capture(port)
+            frame.save(args.output / f"rcc6-ultimate-{label}.png", optimize=True)
+            frame.resize((WIDTH * 4, HEIGHT * 4), Image.Resampling.NEAREST).save(
+                args.output / f"rcc6-ultimate-{label}-4x.png", optimize=True
+            )
+            frames.append((label, frame))
+            command(port, "NP ACTION", rb"NPOK ACTION")
+            time.sleep(args.settle)
         command(port, "NP CLEARDEMO", rb"NPOK CLEARDEMO", 10.0)
 
     contact_sheet(frames).save(args.output / "rcc6-ultimate-gallery.png", optimize=True)
