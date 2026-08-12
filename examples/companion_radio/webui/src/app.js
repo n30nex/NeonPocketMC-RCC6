@@ -775,7 +775,8 @@ function renderNearby() {
     const avatar = element("span", "avatar", initials(contact.advName));
     const body = element("div");
     const rawPath = Number(contact.outPathLen);
-    const hops = Number.isFinite(rawPath) && rawPath !== 0xff ? rawPath & 0x3f : null;
+    const packedPath = Number.isFinite(rawPath) ? rawPath & 0xff : 0xff;
+    const hops = packedPath === 0xff ? null : packedPath & 0x3f;
     const route = hops === null ? "route unknown" : hops ? `${hops} hop${hops === 1 ? "" : "s"}` : "direct advert";
     const location = advertisedLocation(contact);
     body.append(element("p", "eyebrow", contact.type === 2 ? "REPEATER" : contact.type === 3 ? "ROOM" : "CONTACT"), element("h3", "", contact.advName || "Unnamed node"), element("p", "", `ID ${hex(contact.publicKey, 5)} · ${route}${location ? ` · ${location.lat.toFixed(3)}, ${location.lon.toFixed(3)}` : ""}`));

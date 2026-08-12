@@ -38,7 +38,11 @@ for (const required of [
 ]) {
   if (!appSource.includes(required)) throw new Error(`Ultimate WebUI behavior is missing ${required}`);
 }
-for (const required of ["rawPath !== 0xff", "rawPath & 0x3f", "route unknown"]) {
+for (const required of ["rawPath & 0xff", "packedPath === 0xff", "packedPath & 0x3f", "route unknown"]) {
   if (!appSource.includes(required)) throw new Error(`Mesh route decoding is missing ${required}`);
+}
+const decodeHopCount = (rawPath) => ((Number(rawPath) & 0xff) === 0xff ? null : Number(rawPath) & 0x3f);
+for (const [rawPath, expected] of [[-1, null], [255, null], [0x80, 0], [0x81, 1], [0xc2, 2]]) {
+  if (decodeHopCount(rawPath) !== expected) throw new Error(`Mesh route decode failed for ${rawPath}`);
 }
 console.log(`Verified ${bytes.length}-byte RCC6 WebUI gzip asset`);
