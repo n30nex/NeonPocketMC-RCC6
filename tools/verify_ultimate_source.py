@@ -42,6 +42,10 @@ required = {
         ["Queued", "OnAir", "Transmitted", "Acked", "NoAck", "Unconfirmed", "Failed"]) and
         "_ultimate_delivery_hash" in mesh and
         "markDeliveryAcked" in mesh,
+    "encoded hop count decoding": all(value in mesh for value in
+        ["displayHopCount(0x80) == 0", "displayHopCount(0x81) == 1",
+         "displayHopCount(0xC2) == 2", "displayHopCount(0xFF) == 0xFF"]) and
+        mesh.count("displayHopCount(path_len)") >= 3,
     "persistent composer": all(value in service for value in
         ["UltimateComposerState", "setPinnedTarget", "saveDraft"]) and
         all(value in ui for value in ["RESUME DRAFT", "PIN TARGET", "{battery}", "{location}", "{name}"]),
