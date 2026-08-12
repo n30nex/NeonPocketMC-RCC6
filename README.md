@@ -23,11 +23,11 @@ This is a direct, checksum-verified capture of the RCC6 220×128 framebuffer run
 
 ## Release status
 
-The proven v1 line remains available as [`v1.2.0-rc.2`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.2), and earlier Ultimate builds remain available through [`v2.2.0-rc.1`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v2.2.0-rc.1). **Ultimate v2.3 RC2** keeps the RC1 WebUI overhaul and corrects the on-device version label to the actual MeshCore 1.17.0 + RX-fix baseline. Use only files attached to a named release—short-lived Actions artifacts are development builds.
+The proven v1 line remains available as [`v1.2.0-rc.2`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.2), and earlier Ultimate builds remain available through [`v2.3.0-rc.2`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v2.3.0-rc.2). **Ultimate v2.3 RC3** adds a native-USB companion choice beside the existing BLE and authenticated Web modes. Use only files attached to a named release—short-lived Actions artifacts are development builds.
 
 ## Ultimate Companion v2
 
-Ultimate v2 ships as two separate images. They share the same standalone six-area NeonPocket experience and never run Bluetooth and Wi-Fi at the same time:
+Ultimate v2 ships as three separate images. They share the same standalone six-area NeonPocket experience and never run Bluetooth, native USB, and Wi-Fi at the same time:
 
 | Target | Connectivity |
 | --- | --- |
@@ -154,12 +154,12 @@ Replace `COM21` with the port actually shown by your computer. Use the Web/AP fi
 Normal Ultimate installation remains application-only at `0x10000`; it does not replace the bootloader, partition table, NVS, or SPIFFS:
 
 ```text
-python -m esptool --chip esp32c6 --port COM21 write-flash 0x10000 NeonPocketMC-RCC6-Ultimate-v2.3.0-rc.2-BLE-app.bin
+python -m esptool --chip esp32c6 --port COM21 write-flash 0x10000 NeonPocketMC-RCC6-Ultimate-v2.3.0-rc.3-BLE-app.bin
 ```
 
-Use the Web filename for Web mode. Identity-preserving merged recovery images are provided separately and are for bootloader/partition recovery at `0x0`, not ordinary updates. Never erase the whole chip.
+Use the USB filename for the native-USB binary companion or the Web filename for Web mode. Identity-preserving merged recovery images are provided separately and are for bootloader/partition recovery at `0x0`, not ordinary updates. Never erase the whole chip. The USB image carries the standard binary MeshCore companion protocol; it is not the text CLI.
 
-The WebUI accepts only a signed `NeonPocketMC-RCC6-Ultimate-Web-v2.3.0-rc.2.npu` package. Firmware verifies the RCC6 target, Web mode, application length, SHA-256, and Ed25519 signature before selecting the inactive OTA application slot. The existing bootloader does not guarantee automatic rollback from a boot-breaking app; keep USB access and the matching app/recovery images available. BLE firmware has no Web OTA and is updated over USB only.
+The WebUI accepts only a signed `NeonPocketMC-RCC6-Ultimate-Web-v2.3.0-rc.3.npu` package. Firmware verifies the RCC6 target, Web mode, application length, SHA-256, and Ed25519 signature before selecting the inactive OTA application slot. The existing bootloader does not guarantee automatic rollback from a boot-breaking app; keep USB access and the matching app/recovery images available. BLE and native-USB firmware have no Web OTA and are updated over USB only.
 
 ## Build
 
@@ -174,7 +174,7 @@ pio run -e heltec_rcc6_ultimate_companion_ble
 pio run -e heltec_rcc6_ultimate_companion_web
 ```
 
-Ultimate USB CLI Rescue adds `np status`, NDJSON history export, confirmed history clear, retention, privacy, cadence, battery, and quick-phrase commands. Enter CLI Rescue with the normal early-boot Hold gesture; type `help` and see [the Ultimate 2.3 RC2 guide](docs/releases/2.3-RC2.md). Set the installed pack size with `set.batterysize 420` (or `np battery size 420`); use `0` to return to unknown.
+Ultimate USB CLI Rescue adds `np status`, NDJSON history export, confirmed history clear, retention, privacy, cadence, battery, and quick-phrase commands. Enter CLI Rescue with the normal early-boot Hold gesture; type `help` and see [the Ultimate 2.3 RC3 guide](docs/releases/2.3-RC3.md). Set the installed pack size with `set.batterysize 420` (or `np battery size 420`); use `0` to return to unknown.
 
 ## Hardware and power notes
 

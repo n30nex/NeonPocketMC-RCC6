@@ -1,6 +1,6 @@
 {
   "name": "rcc6-meshcore-webui",
-  "version": "2.3.0-rc.2",
+  "version": "2.3.0-rc.3",
   "private": true,
   "type": "module",
   "scripts": {
