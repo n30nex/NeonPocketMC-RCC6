@@ -3,6 +3,15 @@
 #include <Arduino.h> // needed for PlatformIO
 #include <Mesh.h>
 
+static constexpr uint8_t displayHopCount(uint8_t encoded_path_len) {
+  return encoded_path_len == 0xFF ? 0xFF : (encoded_path_len & 0x3F);
+}
+
+static_assert(displayHopCount(0x80) == 0, "3-byte zero-hop path must display as zero hops");
+static_assert(displayHopCount(0x81) == 1, "3-byte one-hop path must display as one hop");
+static_assert(displayHopCount(0xC2) == 2, "encoded path must display only its hop count");
+static_assert(displayHopCount(0xFF) == 0xFF, "direct-route sentinel must remain unknown");
+
 #ifdef RCC6_WEB_AP
 #include <helpers/esp32/SerialWebInterface.h>
 extern SerialWebInterface web_interface;
@@ -415,7 +424,8 @@ void MyMesh::onDiscoveredContact(ContactInfo &contact, bool is_new, uint8_t path
 #ifdef NEONPOCKET_ULTIMATE
   const bool attributable = _ultimate_last_rx_payload == PAYLOAD_TYPE_ADVERT &&
       millis() - _ultimate_last_rx_millis <= 250;
-  ultimate_service.enqueueNode(contact.id.pub_key, contact.name, contact.type, path_len,
+  ultimate_service.enqueueNode(contact.id.pub_key, contact.name, contact.type,
+                               displayHopCount(path_len),
                                getRTCClock()->getCurrentTime(),
                                attributable ? _ultimate_last_rx_rssi : 0,
                                attributable ? _ultimate_last_rx_snr_q4 : 0,
@@ -522,6 +532,7 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
   memcpy(&out_frame[i], from.id.pub_key, 6);
   i += 6; // just 6-byte prefix
   uint8_t path_len = out_frame[i++] = pkt->isRouteFlood() ? pkt->path_len : 0xFF;
+  const uint8_t hop_count = displayHopCount(path_len);
   out_frame[i++] = txt_type;
   memcpy(&out_frame[i], &sender_timestamp, 4);
   i += 4;
@@ -551,7 +562,7 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
     const bool attributable = millis() - _ultimate_last_rx_millis <= 250;
     ultimate_service.enqueueMessage(
         UltimateMessageKind::Direct, true, 0, from.id.pub_key, from.name, text,
-        sender_timestamp, path_len, attributable ? _ultimate_last_rx_rssi : 0,
+        sender_timestamp, hop_count, attributable ? _ultimate_last_rx_rssi : 0,
         attributable ? _ultimate_last_rx_snr_q4 : (int8_t)(pkt->getSNR() * 4));
   }
 #endif
@@ -560,7 +571,7 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
     memcpy(_ui_reply_pubkey_prefix, from.id.pub_key, sizeof(_ui_reply_pubkey_prefix));
     _ui_reply_target = UIReplyTarget::Direct;
 #endif
-    _ui->newMsgWithEvent(path_len, from.name, text, offline_queue_len,
+    _ui->newMsgWithEvent(hop_count, from.name, text, offline_queue_len,
                          UIEventType::contactMessage);
     if (!_serial->isConnected()) {
       _ui->notify(UIEventType::contactMessage);
@@ -655,6 +666,7 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
 #endif
   out_frame[i++] = channel_idx;
   uint8_t path_len = out_frame[i++] = pkt->isRouteFlood() ? pkt->path_len : 0xFF;
+  const uint8_t hop_count = displayHopCount(path_len);
 
   out_frame[i++] = TXT_TYPE_PLAIN;
   memcpy(&out_frame[i], &timestamp, 4);
@@ -693,11 +705,11 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
   const bool attributable = millis() - _ultimate_last_rx_millis <= 250;
   ultimate_service.enqueueMessage(
       UltimateMessageKind::Channel, true, channel_idx, nullptr, channel_name, text,
-      timestamp, path_len, attributable ? _ultimate_last_rx_rssi : 0,
+      timestamp, hop_count, attributable ? _ultimate_last_rx_rssi : 0,
       attributable ? _ultimate_last_rx_snr_q4 : (int8_t)(pkt->getSNR() * 4));
 #endif
   if (_ui) {
-    _ui->newMsgWithEvent(path_len, channel_name, text, offline_queue_len,
+    _ui->newMsgWithEvent(hop_count, channel_name, text, offline_queue_len,
                          UIEventType::channelMessage);
   }
 #endif
