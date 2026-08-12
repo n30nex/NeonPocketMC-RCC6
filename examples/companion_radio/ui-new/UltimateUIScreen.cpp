@@ -429,13 +429,22 @@ void UltimateUIScreen::renderPowerRoot(DisplayDriver& display) {
   display.setColor(ultimate_cyan);
   display.drawTextRightAlign(207, 45, powerProfileLabel(settings.power_profile));
   display.setColor(ultimate_white);
-  if (status.battery_projection_valid) {
+  if (status.usb_host_connected) {
+    strcpy(line, "USB HOST CONNECTED");
+  } else if (status.battery_projection_valid) {
     snprintf(line, sizeof(line), "TREND %+d mV/h", status.battery_trend_mv_per_hour);
   } else {
-    strcpy(line, "TREND LEARNING (10+ MIN)");
+    strcpy(line, "TREND LEARNING");
   }
   display.setCursor(13, 62); display.print(line);
-  if (status.battery_runtime_minutes) {
+  if (settings.battery_capacity_mah) {
+    snprintf(line, sizeof(line), "%umAh", settings.battery_capacity_mah);
+    display.setColor(ultimate_cyan);
+    display.drawTextRightAlign(207, 62, line);
+  }
+  if (status.usb_host_connected) {
+    strcpy(line, "UNPLUG TO START LEARNING");
+  } else if (status.battery_runtime_minutes) {
     snprintf(line, sizeof(line), "EST ~%uh %02um TO 3.45V",
              status.battery_runtime_minutes / 60, status.battery_runtime_minutes % 60);
   } else if (status.battery_projection_valid && status.battery_trend_mv_per_hour >= 3) {
@@ -461,7 +470,8 @@ void UltimateUIScreen::renderRoot(DisplayDriver& display) {
     case Area::Power: renderPowerRoot(display); break;
     default: break;
   }
-  const char* hint = area == Area::Power ? "HOLD TO ARM" : "CLICK NEXT  2X OPEN";
+  const char* hint = area == Area::Power ? "HOLD TO ARM  3X HOME" :
+      (area == Area::Home ? "CLICK NEXT  2X OPEN" : "1X NEXT  2X OPEN  3X HOME");
   renderFooter(display, hint);
 }
 
@@ -494,7 +504,7 @@ void UltimateUIScreen::renderInboxThreads(DisplayDriver& display) {
       }
     }
   }
-  renderFooter(display, thread_count ? "CLICK NEXT  2X SELECT" : "2X BACK");
+  renderFooter(display, thread_count ? "1X NEXT  2X OPEN  3X CLEAR" : "2X BACK  3X CLEAR");
 }
 
 size_t UltimateUIScreen::renderMessagePage(
@@ -576,7 +586,8 @@ void UltimateUIScreen::renderInboxMessage(DisplayDriver& display) {
   display.translateUTF8ToBlocks(filtered, current_message.text, sizeof(filtered));
   message_next_offset = renderMessagePage(display, filtered, message_page_offset);
   message_has_more = filtered[message_next_offset] != 0;
-  renderFooter(display, message_has_more ? "CLICK MORE  2X BACK" : "CLICK NEXT  2X BACK");
+  renderFooter(display, message_has_more ? "1X MORE  2X BACK  3X CLEAR" :
+      "1X NEXT  2X BACK  3X CLEAR");
 }
 
 void UltimateUIScreen::renderNetworkList(DisplayDriver& display) {
@@ -1275,6 +1286,30 @@ void UltimateUIScreen::poll() {
 void UltimateUIScreen::openInbox() {
   area = Area::Inbox;
   enterView(View::InboxThreads);
+}
+
+void UltimateUIScreen::handleTriplePress() {
+  if (draft_dirty) persistDraft();
+  shutdown_pending = false;
+  history_clear_armed = false;
+  if (area == Area::Inbox) {
+    const bool cleared = ultimate_service.markAllRead();
+    task->setLocalUnread(ultimate_service.getSnapshot().unread_count);
+    task->showAlert(cleared ? "Unread cleared" : "Unread update failed", 1000,
+                    cleared ? NEON_GREEN : NEON_RED);
+    area = Area::Home;
+    view = View::Root;
+    startAreaTransition(-1);
+  } else if (view != View::Root) {
+    enterView(View::Root);
+    return;
+  } else if (area != Area::Home) {
+    area = Area::Home;
+    view = View::Root;
+    selection = 0;
+    startAreaTransition(-1);
+  }
+  task->requestRefresh();
 }
 
 void UltimateUIScreen::showPowerConfirm() {

@@ -135,6 +135,7 @@ public:
   bool handleInput(char c) override;
 
   void openInbox();
+  void handleTriplePress();
   void showPowerConfirm();
   void requestShutdown();
   bool isPowerPage() const { return area == Area::Power && view == View::Root; }

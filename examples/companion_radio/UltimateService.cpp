@@ -5,6 +5,9 @@
 #include "DataStore.h"
 #include <ultimate_build_sha.h>
 #include <esp_heap_caps.h>
+#if defined(HELTEC_RCC6) && defined(ESP32)
+#include <driver/usb_serial_jtag.h>
+#endif
 #include <stddef.h>
 #include <string.h>
 
@@ -26,6 +29,15 @@ bool generationAfter(uint32_t lhs, uint32_t rhs) {
 }
 
 UltimateService ultimate_service;
+
+static constexpr uint8_t displayHopCount(uint8_t encoded_path_len) {
+  return encoded_path_len == 0xFF ? 0xFF : (encoded_path_len & 0x3F);
+}
+
+static_assert(displayHopCount(0x80) == 0, "3-byte zero-hop path must display as zero hops");
+static_assert(displayHopCount(0x81) == 1, "3-byte one-hop path must display as one hop");
+static_assert(displayHopCount(0xC2) == 2, "encoded path must display only its hop count");
+static_assert(displayHopCount(0xFF) == 0xFF, "direct-route sentinel must remain unknown");
 
 const char* UltimateService::getBuildSha() const {
   return ULTIMATE_BUILD_SHA;
@@ -60,6 +72,7 @@ void UltimateService::setDefaults() {
   settings.scan_cadence_ms = 650;
   settings.private_notifications = false;
   settings.battery_calibration_mv = 0;
+  settings.battery_capacity_mah = 0;
   settings.power_profile = static_cast<uint8_t>(UltimatePowerProfile::Balanced);
   static const char* defaults[8] = {
       "On my way", "All good", "Need help", "Please repeat",
@@ -118,6 +131,9 @@ bool UltimateService::loadSettings() {
   }
   settings.private_notifications = stored.private_notifications != 0;
   settings.battery_calibration_mv = constrain(stored.battery_calibration_mv, -300, 300);
+  settings.battery_capacity_mah = stored.battery_capacity_mah == 0 ||
+      (stored.battery_capacity_mah >= 50 && stored.battery_capacity_mah <= 20000)
+          ? stored.battery_capacity_mah : 0;
   settings.power_profile = stored.power_profile <=
       static_cast<uint8_t>(UltimatePowerProfile::Battery)
           ? stored.power_profile : static_cast<uint8_t>(UltimatePowerProfile::Balanced);
@@ -136,6 +152,7 @@ bool UltimateService::saveSettings() {
   stored.scan_cadence_ms = settings.scan_cadence_ms;
   stored.private_notifications = settings.private_notifications ? 1 : 0;
   stored.battery_calibration_mv = settings.battery_calibration_mv;
+  stored.battery_capacity_mah = settings.battery_capacity_mah;
   stored.power_profile = settings.power_profile;
   for (uint8_t i = 0; i < 8; i++) {
     copyText(stored.quick_phrases[i], sizeof(stored.quick_phrases[i]),
@@ -307,8 +324,10 @@ bool UltimateService::readSlot(uint16_t slot, UltimateHistoryRecord& record) con
   }
   const bool complete = file.read(reinterpret_cast<uint8_t*>(&record), sizeof(record)) == sizeof(record);
   file.close();
-  return complete && record.magic == history_magic &&
+  const bool valid = complete && record.magic == history_magic &&
       record.crc32 == crc32(&record, offsetof(UltimateHistoryRecord, crc32));
+  if (valid) record.path_len = displayHopCount(record.path_len);
+  return valid;
 }
 
 bool UltimateService::writeSlot(uint16_t slot, const UltimateHistoryRecord& record) {
@@ -332,7 +351,7 @@ bool UltimateService::appendRecord(const PendingEvent& event) {
   record.timestamp = event.timestamp;
   record.flags = event.flags;
   record.kind = event.subtype;
-  record.path_len = event.path_len;
+  record.path_len = displayHopCount(event.path_len);
   record.snr_quarter_db = event.snr_quarter_db;
   record.rssi_dbm = event.rssi_dbm;
   record.target = event.target;
@@ -405,7 +424,7 @@ bool UltimateService::enqueueMessage(
   event.flags = incoming ? ULTIMATE_HISTORY_INCOMING : ULTIMATE_HISTORY_READ;
   event.target = target;
   event.timestamp = timestamp ? timestamp : (clock ? clock->getCurrentTime() : 0);
-  event.path_len = path_len;
+  event.path_len = displayHopCount(path_len);
   event.rssi_dbm = rssi_dbm;
   event.snr_quarter_db = snr_quarter_db;
   if (peer_key) memcpy(event.peer_key, peer_key, sizeof(event.peer_key));
@@ -441,7 +460,7 @@ bool UltimateService::enqueueNode(
   event.type = PendingType::Node;
   event.flags = signal_attributable ? 1 : 0;
   event.role = role;
-  event.path_len = path_len;
+  event.path_len = displayHopCount(path_len);
   event.timestamp = timestamp;
   event.rssi_dbm = rssi_dbm;
   event.snr_quarter_db = snr_quarter_db;
@@ -471,7 +490,7 @@ void UltimateService::updateNetwork(const PendingEvent& event) {
   node.last_seen = event.timestamp;
   node.packet_count++;
   node.role = event.role;
-  node.path_len = event.path_len;
+  node.path_len = displayHopCount(event.path_len);
   node.signal_attributable = event.flags != 0;
   node.rssi_dbm = node.signal_attributable ? event.rssi_dbm : 0;
   node.snr_quarter_db = node.signal_attributable ? event.snr_quarter_db : 0;
@@ -656,7 +675,7 @@ void UltimateService::sampleBatteryProjection() {
   snapshot.battery_projection_valid = false;
   snapshot.battery_trend_mv_per_hour = 0;
   snapshot.battery_runtime_minutes = 0;
-  if (high_resolution_count < 10 || snapshot.battery_mv == 0) return;
+  if (snapshot.usb_host_connected || high_resolution_count < 10 || snapshot.battery_mv == 0) return;
 
   const uint8_t newest_index =
       (high_resolution_head + high_resolution_capacity - 1) % high_resolution_capacity;
@@ -681,6 +700,33 @@ void UltimateService::sampleBatteryProjection() {
     snapshot.battery_runtime_minutes =
         static_cast<uint16_t>(minutes > 65535UL ? 65535UL : minutes);
   }
+}
+
+void UltimateService::sampleUsbHostState() {
+#if defined(HELTEC_RCC6) && defined(ESP32)
+  const bool connected = usb_serial_jtag_is_connected();
+  if (connected) {
+    usb_host_seen = true;
+    snapshot.battery_projection_valid = false;
+    snapshot.battery_trend_mv_per_hour = 0;
+    snapshot.battery_runtime_minutes = 0;
+  }
+  if (!connected && usb_host_connected && usb_host_seen) {
+    high_resolution_head = 0;
+    high_resolution_count = 0;
+    last_metric_rx = snapshot.rx_packets;
+    last_metric_tx = snapshot.tx_packets;
+    last_metric_fail = snapshot.tx_failures;
+    snapshot.battery_projection_valid = false;
+    snapshot.battery_trend_mv_per_hour = 0;
+    snapshot.battery_runtime_minutes = 0;
+    Serial.println("Ultimate: USB host disconnected; battery learning started");
+  }
+  usb_host_connected = connected;
+  snapshot.usb_host_connected = connected;
+#else
+  snapshot.usb_host_connected = false;
+#endif
 }
 
 void UltimateService::sampleStatus() {
@@ -769,6 +815,10 @@ void UltimateService::loop() {
   while (budget-- && popEvent(event)) processEvent(event);
   const uint32_t now = millis();
   refreshDeliveryState(now);
+  if (static_cast<int32_t>(now - next_usb_host_sample) >= 0) {
+    next_usb_host_sample = now + 1000;
+    sampleUsbHostState();
+  }
   if (static_cast<int32_t>(now - next_status_sample) >= 0) {
     next_status_sample = now + 60000;
     sampleStatus();
@@ -857,6 +907,7 @@ uint16_t UltimateService::visitHistory(uint32_t before_sequence, uint16_t limit,
         record.magic == history_magic &&
         record.crc32 == crc32(&record, offsetof(UltimateHistoryRecord, crc32));
     if (valid && (before_sequence == 0 || record.sequence < before_sequence)) {
+      record.path_len = displayHopCount(record.path_len);
       visited++;
       if (!visitor(record, context)) break;
     }
@@ -887,6 +938,7 @@ bool UltimateService::getThreadMessage(uint8_t kind, uint8_t target,
         ? candidate.target == target
         : peer_key != nullptr && memcmp(candidate.peer_key, peer_key, sizeof(candidate.peer_key)) == 0;
     if (same && matched++ == ordinal) {
+      candidate.path_len = displayHopCount(candidate.path_len);
       record = candidate;
       found = true;
       break;
@@ -917,6 +969,7 @@ bool UltimateService::markRead(uint32_t sequence) {
       return true;
     }
     record.flags |= ULTIMATE_HISTORY_READ;
+    record.path_len = displayHopCount(record.path_len);
     record.crc32 = crc32(&record, offsetof(UltimateHistoryRecord, crc32));
     const bool written = file.seek(position) &&
         file.write(reinterpret_cast<const uint8_t*>(&record), sizeof(record)) == sizeof(record);
@@ -938,6 +991,37 @@ bool UltimateService::markRead(uint32_t sequence) {
   }
   file.close();
   return false;
+}
+
+bool UltimateService::markAllRead() {
+  if (snapshot.unread_count == 0) return true;
+  File file = filesystem->open(history_path, "r+");
+  if (!file) return false;
+  bool success = true;
+  UltimateHistoryRecord record;
+  for (uint16_t offset = 0; offset < meta.count; offset++) {
+    const uint16_t slot = (meta.head + meta.capacity - 1 - offset) % meta.capacity;
+    const size_t position = static_cast<size_t>(slot) * sizeof(record);
+    const bool valid = file.seek(position) &&
+        file.read(reinterpret_cast<uint8_t*>(&record), sizeof(record)) == sizeof(record) &&
+        record.magic == history_magic &&
+        record.crc32 == crc32(&record, offsetof(UltimateHistoryRecord, crc32));
+    if (!valid) {
+      success = false;
+    } else if ((record.flags & (ULTIMATE_HISTORY_INCOMING | ULTIMATE_HISTORY_READ)) ==
+               ULTIMATE_HISTORY_INCOMING) {
+      record.flags |= ULTIMATE_HISTORY_READ;
+      record.crc32 = crc32(&record, offsetof(UltimateHistoryRecord, crc32));
+      success = file.seek(position) &&
+          file.write(reinterpret_cast<const uint8_t*>(&record), sizeof(record)) == sizeof(record) &&
+          success;
+    }
+    if ((offset & 31U) == 31U) yield();
+  }
+  file.flush();
+  file.close();
+  rebuildThreads();
+  return success;
 }
 
 bool UltimateService::clearHistory() {
@@ -1040,6 +1124,8 @@ bool UltimateService::updateSettings(const UltimateSettings& updated) {
       (updated.scan_cadence_ms != 450 && updated.scan_cadence_ms != 650 &&
        updated.scan_cadence_ms != 900 && updated.scan_cadence_ms != 1200) ||
       updated.battery_calibration_mv < -300 || updated.battery_calibration_mv > 300 ||
+      (updated.battery_capacity_mah != 0 &&
+       (updated.battery_capacity_mah < 50 || updated.battery_capacity_mah > 20000)) ||
       updated.power_profile > static_cast<uint8_t>(UltimatePowerProfile::Battery)) {
     return false;
   }

@@ -155,6 +155,7 @@ struct UltimateSnapshot {
   bool last_signal_valid;
   bool memory_gate_passed;
   bool battery_projection_valid;
+  bool usb_host_connected;
 };
 
 struct UltimateSettings {
@@ -162,6 +163,7 @@ struct UltimateSettings {
   uint16_t scan_cadence_ms;
   bool private_notifications;
   int16_t battery_calibration_mv;
+  uint16_t battery_capacity_mah;
   uint8_t power_profile;
   char quick_phrases[8][48];
 };
@@ -206,7 +208,7 @@ class UltimateService {
     uint8_t private_notifications;
     int16_t battery_calibration_mv;
     uint8_t power_profile;
-    uint8_t reserved[2];
+    uint16_t battery_capacity_mah;
     char quick_phrases[8][48];
     uint32_t crc32;
   };
@@ -287,6 +289,9 @@ class UltimateService {
   uint32_t last_metric_tx = 0;
   uint32_t last_metric_fail = 0;
   uint32_t last_signal_millis = 0;
+  uint32_t next_usb_host_sample = 0;
+  bool usb_host_seen = false;
+  bool usb_host_connected = false;
 
   static uint32_t crc32(const void* data, size_t length);
   static bool validCapacity(uint16_t capacity);
@@ -314,6 +319,7 @@ class UltimateService {
   void sampleStatus();
   void sampleHighResolution();
   void sampleBatteryProjection();
+  void sampleUsbHostState();
   void refreshDeliveryState(uint32_t now);
   bool saveMetricBucket(uint16_t slot);
   void loadMetrics();
@@ -357,6 +363,7 @@ public:
                         uint16_t ordinal, UltimateHistoryRecord& record) const;
   uint32_t getNewestSequence() const { return meta.count ? meta.next_sequence - 1 : 0; }
   bool markRead(uint32_t sequence);
+  bool markAllRead();
   bool clearHistory();
   bool setHistoryCapacity(uint16_t capacity);
   bool updateSettings(const UltimateSettings& updated);

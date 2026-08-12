@@ -714,6 +714,17 @@ class HomeScreen : public UIScreen {
 
 public:
 #ifdef NEONPOCKET_UI
+  void neonGoHome() {
+    _page = HomePage::FIRST;
+    _shutdown_init = false;
+    _transition_dir = -1;
+    _transition_started = 0;
+    _transition_pending = true;
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+    _quick_reply_confirm = false;
+#endif
+  }
+
   void neonRequestShutdown() {
     _page = HomePage::SHUTDOWN;
     _shutdown_init = true;
@@ -1281,7 +1292,7 @@ public:
     display.setColor(NEON_BLUE);
     display.setCursor(4, 113);
     display.print(page_has_more ? "CLICK MORE" : "CLICK NEXT");
-    display.drawTextRightAlign(display.width() - 4, 113, "2X CLEAR ALL");
+    display.drawTextRightAlign(display.width() - 4, 113, "3X CLEAR ALL");
     return 1000;
 #else
     char tmp[16];
@@ -2088,8 +2099,21 @@ char UITask::handleDoubleClick(char c) {
 
 char UITask::handleTripleClick(char c) {
   MESH_DEBUG_PRINTLN("UITask: triple click triggered");
+#ifdef NEONPOCKET_UI
+  _power_confirm_until = 0;
+  c = checkDisplayOn(KEY_SELECT);
+  if (c == 0) return 0;
+#ifdef NEONPOCKET_ULTIMATE
+  static_cast<UltimateUIScreen*>(home)->handleTriplePress();
+#else
+  if (curr == msg_preview) curr->handleInput(KEY_ENTER);
+  static_cast<HomeScreen*>(home)->neonGoHome();
+  gotoHomeScreen();
+#endif
+#else
   checkDisplayOn(c);
   toggleBuzzer();
+#endif
   c = 0;
   return c;
 }

@@ -2201,6 +2201,22 @@ static bool exportUltimateRecord(const UltimateHistoryRecord& record, void*) {
 static void exportUltimateHistoryToSerial() {
   ultimate_service.visitHistory(0, 0, true, exportUltimateRecord, nullptr);
 }
+
+static void setUltimateBatterySize(const char* value) {
+  char* end = nullptr;
+  const long capacity = strtol(value, &end, 10);
+  if (!value[0] || *end || (capacity != 0 && (capacity < 50 || capacity > 20000))) {
+    Serial.println("  Error: battery size must be 50..20000 mAh, or 0 for unknown");
+    return;
+  }
+  UltimateSettings updated = ultimate_service.getSettings();
+  updated.battery_capacity_mah = static_cast<uint16_t>(capacity);
+  if (ultimate_service.updateSettings(updated)) {
+    Serial.printf("  > battery size is now %u mAh\n", updated.battery_capacity_mah);
+  } else {
+    Serial.println("  Error: settings write failed");
+  }
+}
 #endif
 
 void MyMesh::checkCLIRescueCmd() {
@@ -2230,15 +2246,25 @@ void MyMesh::checkCLIRescueCmd() {
         Serial.printf("  Error: unknown config: %s\n", config);
       }
 #ifdef NEONPOCKET_ULTIMATE
+    } else if (memcmp(cli_command, "set.batterysize ", 16) == 0) {
+      setUltimateBatterySize(&cli_command[16]);
+    } else if (strcmp(cli_command, "help") == 0) {
+      Serial.println("  np status | np history export | np history clear CONFIRM");
+      Serial.println("  np history capacity off|128|512|2048 | np private on|off");
+      Serial.println("  np cadence 450|650|900|1200 | np power balanced|field|battery");
+      Serial.println("  set.batterysize <mAh> | np battery size <mAh> | np battery offset <mV>");
+      Serial.println("  np phrase <1..8> <text>");
     } else if (strcmp(cli_command, "np status") == 0) {
       const UltimateSnapshot& status = ultimate_service.getSnapshot();
-      Serial.printf("Ultimate %s history=%u/%u unread=%u rx=%lu tx=%lu fail=%lu heap=%lu largest=%lu gate=%s battery=%umV trend=%+dmV/h profile=%u delivery=%u\n",
+      Serial.printf("Ultimate %s history=%u/%u unread=%u rx=%lu tx=%lu fail=%lu heap=%lu largest=%lu gate=%s battery=%umV/%umAh trend=%+dmV/h usb-host=%s profile=%u delivery=%u\n",
                     NEONPOCKET_ULTIMATE_VERSION, status.history_count, status.history_capacity,
                     status.unread_count, (unsigned long)status.rx_packets,
                     (unsigned long)status.tx_packets, (unsigned long)status.tx_failures,
                     (unsigned long)status.free_heap, (unsigned long)status.largest_allocation,
                     status.memory_gate_passed ? "pass" : "pending", status.battery_mv,
+                    ultimate_service.getSettings().battery_capacity_mah,
                     status.battery_trend_mv_per_hour,
+                    status.usb_host_connected ? "connected" : "absent",
                     ultimate_service.getSettings().power_profile,
                     static_cast<uint8_t>(ultimate_service.getDelivery().state));
     } else if (strcmp(cli_command, "np history export") == 0) {
@@ -2285,6 +2311,8 @@ void MyMesh::checkCLIRescueCmd() {
       Serial.println(ultimate_service.updateSettings(updated)
                          ? "  > battery calibration saved"
                          : "  Error: offset must be -300..300 mV");
+    } else if (memcmp(cli_command, "np battery size ", 16) == 0) {
+      setUltimateBatterySize(&cli_command[16]);
     } else if (memcmp(cli_command, "np phrase ", 10) == 0 && cli_command[10] >= '1' && cli_command[10] <= '8' &&
                cli_command[11] == ' ') {
       UltimateSettings updated = ultimate_service.getSettings();

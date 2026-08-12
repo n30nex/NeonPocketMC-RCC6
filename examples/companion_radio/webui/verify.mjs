@@ -9,15 +9,15 @@ const bytes = Uint8Array.from([...body[1].matchAll(/0x([0-9a-f]{2})/g)], (match)
 const html = gunzipSync(bytes).toString("utf8");
 
 for (const required of [
-  "Home", "Messages", "Nearby", "Radio", "More", "/api/frame", "/api/network",
+  "Dashboard", "Messages", "Mesh map", "Radio", "Device", "/api/frame", "/api/network",
   "X-RCC6-Session", "application/x-www-form-urlencoded", "Set up local Wi-Fi",
   "meshcore", "localStorage", "rcc6-radio-owner", "rcc6-history-pending-", "syncNextMessage", "MeshCore.js",
   "NeonPocketMC", "brand-pocket",
-  "NEONPOCKET ULTIMATE V2", "Seven days of your mesh", "32 KB MEMORY GATE",
+  "RCC6 Ultimate", "LAST 24 HOURS", "ADVERTISED LOCATIONS", "MEMORY CHECK",
   "/api/ultimate/status", "/api/ultimate/history", "/api/ultimate/export",
   "/api/ultimate/settings", "/api/ultimate/location", "/api/ultimate/ota",
-  "SIGNED WEB OTA", "History & one-switch composer", "BATTERY INTELLIGENCE",
-  "LATEST DELIVERY", "Power profile", "Battery calibration offset",
+  "SIGNED UPDATE", "NeonPocket settings", "BATTERY TREND",
+  "LATEST DELIVERY", "Power profile", "Battery capacity", "Battery calibration offset",
 ]) {
   if (!html.includes(required)) throw new Error(`Built UI is missing ${required}`);
 }
@@ -31,10 +31,19 @@ for (const required of ["this.drainTask = this.drainRetainedFrames()", "if (!thi
 }
 for (const required of [
   "async function refreshUltimate()", "function drawUltimateChart(",
+  "function drawActivityBars(", "function drawMeshMap(", "function advertisedLocation(",
   'ultimateFetch("/api/ultimate/settings"', 'fetch("/api/ultimate/ota"',
   "navigator.geolocation.getCurrentPosition", "batteryTrendMvPerHour",
-  "batteryRuntimeMinutes", "ultimate.delivery",
+  "batteryRuntimeMinutes", "batteryCapacityMah", "usbHostConnected", "ultimate.delivery",
+  'split("\\0", 1)',
 ]) {
   if (!appSource.includes(required)) throw new Error(`Ultimate WebUI behavior is missing ${required}`);
+}
+for (const required of ["rawPath & 0xff", "packedPath === 0xff", "packedPath & 0x3f", "route unknown"]) {
+  if (!appSource.includes(required)) throw new Error(`Mesh route decoding is missing ${required}`);
+}
+const decodeHopCount = (rawPath) => ((Number(rawPath) & 0xff) === 0xff ? null : Number(rawPath) & 0x3f);
+for (const [rawPath, expected] of [[-1, null], [255, null], [0x80, 0], [0x81, 1], [0xc2, 2]]) {
+  if (decodeHopCount(rawPath) !== expected) throw new Error(`Mesh route decode failed for ${rawPath}`);
 }
 console.log(`Verified ${bytes.length}-byte RCC6 WebUI gzip asset`);

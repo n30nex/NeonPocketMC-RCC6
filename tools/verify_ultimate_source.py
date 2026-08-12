@@ -45,12 +45,22 @@ required = {
     "encoded hop count decoding": all(value in mesh for value in
         ["displayHopCount(0x80) == 0", "displayHopCount(0x81) == 1",
          "displayHopCount(0xC2) == 2", "displayHopCount(0xFF) == 0xFF"]) and
-        mesh.count("displayHopCount(path_len)") >= 3,
+        mesh.count("displayHopCount(path_len)") >= 3 and
+        all(value in service_cpp for value in
+            ["displayHopCount(0x80) == 0", "record.path_len = displayHopCount(record.path_len)",
+             "record.path_len = displayHopCount(event.path_len)",
+             "event.path_len = displayHopCount(path_len)",
+             "node.path_len = displayHopCount(event.path_len)"]),
     "persistent composer": all(value in service for value in
         ["UltimateComposerState", "setPinnedTarget", "saveDraft"]) and
         all(value in ui for value in ["RESUME DRAFT", "PIN TARGET", "{battery}", "{location}", "{name}"]),
     "battery intelligence": all(value in service for value in
-        ["battery_trend_mv_per_hour", "battery_runtime_minutes", "battery_calibration_mv", "power_profile"]),
+        ["battery_trend_mv_per_hour", "battery_runtime_minutes", "battery_calibration_mv",
+         "battery_capacity_mah", "usb_host_connected", "power_profile"]) and
+        "usb_serial_jtag_is_connected" in service_cpp and
+        "set.batterysize " in mesh and "np battery size " in mesh,
+    "triple press navigation": "handleTriplePress" in ui and "markAllRead" in service_cpp and
+        "handleTripleClick" in ui_task and "3X CLEAR" in ui,
     "artifact verifier": (ROOT / "tools/verify_ultimate_artifact.py").is_file(),
     "portable recovery merger": (ROOT / "tools/merge_rcc6_image.py").is_file(),
 }
