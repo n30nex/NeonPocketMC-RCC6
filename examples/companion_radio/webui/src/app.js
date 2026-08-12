@@ -774,9 +774,11 @@ function renderNearby() {
     const card = element("article", "card nearby-card");
     const avatar = element("span", "avatar", initials(contact.advName));
     const body = element("div");
-    const hops = (Number(contact.outPathLen) || 0) & 0x3f;
+    const rawPath = Number(contact.outPathLen);
+    const hops = Number.isFinite(rawPath) && rawPath !== 0xff ? rawPath & 0x3f : null;
+    const route = hops === null ? "route unknown" : hops ? `${hops} hop${hops === 1 ? "" : "s"}` : "direct advert";
     const location = advertisedLocation(contact);
-    body.append(element("p", "eyebrow", contact.type === 2 ? "REPEATER" : contact.type === 3 ? "ROOM" : "CONTACT"), element("h3", "", contact.advName || "Unnamed node"), element("p", "", `ID ${hex(contact.publicKey, 5)} · ${hops ? `${hops} hop${hops === 1 ? "" : "s"}` : "direct advert"}${location ? ` · ${location.lat.toFixed(3)}, ${location.lon.toFixed(3)}` : ""}`));
+    body.append(element("p", "eyebrow", contact.type === 2 ? "REPEATER" : contact.type === 3 ? "ROOM" : "CONTACT"), element("h3", "", contact.advName || "Unnamed node"), element("p", "", `ID ${hex(contact.publicKey, 5)} · ${route}${location ? ` · ${location.lat.toFixed(3)}, ${location.lon.toFixed(3)}` : ""}`));
     const time = element("time", "", formatAge(contact.lastAdvert));
     const action = element("button", "contact-action", "Message →");
     action.type = "button";

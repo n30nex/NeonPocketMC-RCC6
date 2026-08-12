@@ -38,4 +38,7 @@ for (const required of [
 ]) {
   if (!appSource.includes(required)) throw new Error(`Ultimate WebUI behavior is missing ${required}`);
 }
+for (const required of ["rawPath !== 0xff", "rawPath & 0x3f", "route unknown"]) {
+  if (!appSource.includes(required)) throw new Error(`Mesh route decoding is missing ${required}`);
+}
 console.log(`Verified ${bytes.length}-byte RCC6 WebUI gzip asset`);
