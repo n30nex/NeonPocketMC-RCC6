@@ -9,11 +9,12 @@ const bytes = Uint8Array.from([...body[1].matchAll(/0x([0-9a-f]{2})/g)], (match)
 const html = gunzipSync(bytes).toString("utf8");
 
 for (const required of [
-  "Dashboard", "Messages", "Mesh map", "Radio", "Device", "/api/frame", "/api/network",
+  "Overview", "Messages", "What this RCC6 can hear", "Radio", "This RCC6", "/api/frame", "/api/network",
   "X-RCC6-Session", "application/x-www-form-urlencoded", "Set up local Wi-Fi",
   "meshcore", "localStorage", "rcc6-radio-owner", "rcc6-history-pending-", "syncNextMessage", "MeshCore.js",
   "NeonPocketMC", "brand-pocket",
-  "RCC6 Ultimate", "LAST 24 HOURS", "ADVERTISED LOCATIONS", "MEMORY CHECK",
+  "RCC6 Ultimate", "LAST 24 HOURS", "Advertised places", "MEMORY HEADROOM",
+  "SIGNAL SAMPLES", "Freshest nearby nodes", "Hop view",
   "/api/ultimate/status", "/api/ultimate/history", "/api/ultimate/export",
   "/api/ultimate/settings", "/api/ultimate/location", "/api/ultimate/ota",
   "SIGNED UPDATE", "NeonPocket settings", "BATTERY TREND",
@@ -39,7 +40,7 @@ for (const required of [
 ]) {
   if (!appSource.includes(required)) throw new Error(`Ultimate WebUI behavior is missing ${required}`);
 }
-for (const required of ["rawPath & 0xff", "packedPath === 0xff", "packedPath & 0x3f", "route unknown"]) {
+for (const required of ["raw & 0xff", "packed === 0xff", "packed & 0x3f", "route unknown"]) {
   if (!appSource.includes(required)) throw new Error(`Mesh route decoding is missing ${required}`);
 }
 const decodeHopCount = (rawPath) => ((Number(rawPath) & 0xff) === 0xff ? null : Number(rawPath) & 0x3f);

@@ -31,11 +31,11 @@
 
   <div class="shell">
     <aside class="sidebar">
-      <div class="brand"><svg class="brand-mark" aria-hidden="true"><use href="#brand-pocket"/></svg><span>RCC6 Ultimate<small>NeonPocketMC companion</small></span></div>
+      <div class="brand"><svg class="brand-mark" aria-hidden="true"><use href="#brand-pocket"/></svg><span>NeonPocketMC<small>RCC6 Ultimate Companion</small></span></div>
       <nav class="nav" aria-label="Primary">
-        <button class="active" data-view="home"><svg><use href="#i-home"/></svg><span>Dashboard</span></button>
+        <button class="active" data-view="home"><svg><use href="#i-home"/></svg><span>Overview</span></button>
         <button data-view="messages"><svg><use href="#i-msg"/></svg><span>Messages</span><b id="nav-unread" hidden>0</b></button>
-        <button data-view="nearby"><svg><use href="#i-near"/></svg><span>Map</span></button>
+        <button data-view="nearby"><svg><use href="#i-near"/></svg><span>Nearby</span></button>
         <button data-view="radio"><svg><use href="#i-radio"/></svg><span>Radio</span></button>
         <button data-view="ultimate"><svg><use href="#i-more"/></svg><span>Device</span></button>
       </nav>
@@ -44,7 +44,7 @@
 
     <main>
       <header class="topbar">
-        <div><p class="eyebrow" id="screen-kicker">RCC6 ULTIMATE</p><h1 id="screen-title">Dashboard</h1></div>
+        <div><p class="eyebrow" id="screen-kicker">NEONPOCKETMC</p><h1 id="screen-title">Overview</h1></div>
         <div class="top-actions">
           <span class="battery" id="battery-chip">— V</span>
           <button class="link-chip" id="connect-button"><span class="status-dot"></span><span id="link-label">Connecting</span></button>
@@ -54,15 +54,15 @@
       <section class="screen active" data-screen="home">
         <article class="hero card">
           <div class="hero-copy">
-            <p class="eyebrow">MESHCORE COMPANION</p>
+            <p class="eyebrow">YOUR MESH, RIGHT NOW</p>
             <h2 id="node-name">RCC6</h2>
             <p id="node-id">Waiting for companion link…</p>
           </div>
           <div class="mesh-orbit" aria-hidden="true"><i></i><i></i><i></i><span></span></div>
           <div class="hero-stats">
-            <div><small>LINK</small><strong id="hero-link">Starting</strong></div>
-            <div><small>CONTACTS</small><strong id="hero-contacts">—</strong></div>
-            <div><small>UPTIME</small><strong id="hero-uptime">—</strong></div>
+            <div><small>CONNECTION</small><strong id="hero-link">Starting</strong></div>
+            <div><small>KNOWN NODES</small><strong id="hero-contacts">—</strong></div>
+            <div><small>ONLINE FOR</small><strong id="hero-uptime">—</strong></div>
           </div>
         </article>
 
@@ -101,6 +101,17 @@
             <article class="card health-tile"><small>DELIVERY</small><strong id="dashboard-delivery">IDLE</strong><span id="dashboard-delivery-note">No local send</span></article>
             <article class="card health-tile"><small>HISTORY</small><strong id="dashboard-history">—</strong><span id="dashboard-history-note">stored messages</span></article>
           </div>
+          <div class="dashboard-analytics">
+            <article class="card analytics-card">
+              <div class="card-head"><div><p class="eyebrow">SIGNAL SAMPLES</p><h3>What the radio has heard</h3></div><span id="dashboard-signal-note" class="quiet">Waiting for packets</span></div>
+              <canvas id="dashboard-signal-chart" height="138" aria-label="Distribution of recent RSSI samples"></canvas>
+              <div class="signal-scale"><span>Very weak</span><span>Usable</span><span>Strong</span></div>
+            </article>
+            <article class="card analytics-card">
+              <div class="card-head"><div><p class="eyebrow">RECENTLY HEARD</p><h3>Freshest nearby nodes</h3></div><button class="text-action" data-open="nearby">See all →</button></div>
+              <div id="dashboard-nearby-bars" class="nearby-bars"><p class="empty-state">Waiting for node adverts.</p></div>
+            </article>
+          </div>
         </div>
       </section>
 
@@ -131,11 +142,15 @@
       </section>
 
       <section class="screen" data-screen="nearby">
-        <div class="section-head page-head"><div><p class="eyebrow">ADVERTISED LOCATIONS</p><h2>Mesh map</h2><p>Known locations from MeshCore adverts on your current preset. No background tracking.</p></div><button class="icon-button" id="nearby-refresh" aria-label="Refresh contacts"><svg><use href="#i-refresh"/></svg></button></div>
+        <div class="section-head page-head"><div><p class="eyebrow">NEARBY NODES</p><h2>What this RCC6 can hear</h2><p>Choose real advertised locations or a hop-and-recency view. The radio stays on your configured preset.</p></div><button class="icon-button" id="nearby-refresh" aria-label="Refresh contacts"><svg><use href="#i-refresh"/></svg></button></div>
+        <div class="map-switch" role="group" aria-label="Nearby view">
+          <button class="active" type="button" data-map-mode="places">Advertised places</button>
+          <button type="button" data-map-mode="heard">Hop view</button>
+        </div>
         <article class="card mesh-map-card">
           <canvas id="mesh-map" height="410" aria-label="Map of contacts that advertise a location"></canvas>
           <div class="map-badge"><strong id="map-located">0 located</strong><span id="map-unlocated">0 without location</span></div>
-          <div class="map-empty" id="map-empty"><strong>No advertised locations yet</strong><span>Contacts still appear below. A marker is shown only when a node shares valid coordinates.</span></div>
+          <div class="map-empty" id="map-empty"><strong>No advertised locations yet</strong><span>Switch to Hop view to see recent nodes without inventing a location for them.</span></div>
         </article>
         <div class="section-head nearby-subhead"><div><p class="eyebrow">RECENTLY HEARD</p><h2>Nodes on this preset</h2></div></div>
         <div class="nearby-grid" id="nearby-list"><article class="card empty-state">Nearby nodes appear as adverts arrive.</article></div>
@@ -169,8 +184,8 @@
 
       <section class="screen" data-screen="ultimate">
         <article class="ultimate-hero card">
-          <div><p class="eyebrow">DEVICE</p><h2>RCC6 health, history and settings</h2><p>Review storage, memory, display timing and message history. Settings here affect only NeonPocket features.</p></div>
-          <div class="ultimate-gate"><span id="ultimate-gate-dot"></span><small>MEMORY CHECK</small><strong id="ultimate-gate">Checking</strong></div>
+          <div><p class="eyebrow">THIS RCC6</p><h2>Storage, power and display</h2><p>See what the device is using, keep message history, tune the screen, and install signed updates.</p></div>
+          <div class="ultimate-gate"><span id="ultimate-gate-dot"></span><small>MEMORY HEADROOM</small><strong id="ultimate-gate">Checking</strong></div>
         </article>
         <div class="ultimate-metrics">
           <article class="card metric"><small>DEVICE HISTORY</small><strong id="ultimate-history-count">—</strong><span id="ultimate-history-capacity">records</span></article>

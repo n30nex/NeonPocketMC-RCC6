@@ -273,6 +273,7 @@ const state = {
   ultimateHistory: [],
   ultimateSettings: null,
   historyNode: "",
+  mapMode: "places",
 };
 
 let connection = new HttpPollingConnection();
@@ -695,6 +696,51 @@ function renderDashboardAnalytics() {
   text("dashboard-history-note", ultimate ? `of ${formatNumber(ultimate.historyCapacity || 0)} records` : "stored messages");
   const total = drawActivityBars($("dashboard-activity-chart"), ultimate?.hours, 24);
   text("dashboard-activity-total", total ? `${formatNumber(total)} packets shown` : "No samples yet");
+  drawSignalHistogram($("dashboard-signal-chart"), state.rfSamples);
+  renderNearbyBars();
+}
+
+function drawSignalHistogram(canvas, samples = []) {
+  const surface = canvasContext(canvas, 138);
+  if (!surface) return;
+  const { context, width, height } = surface;
+  const values = samples.filter(Number.isFinite).slice(-60);
+  text("dashboard-signal-note", values.length ? `${values.length} recent sample${values.length === 1 ? "" : "s"}` : "Waiting for packets");
+  context.clearRect(0, 0, width, height);
+  context.strokeStyle = "rgba(141,152,167,.14)";
+  [0.25, 0.5, 0.75].forEach((part) => { context.beginPath(); context.moveTo(0, height * part); context.lineTo(width, height * part); context.stroke(); });
+  const edges = [-130, -115, -105, -95, -85, -70];
+  const counts = edges.slice(0, -1).map((low, index) => values.filter((value) => value >= low && value < edges[index + 1]).length);
+  const max = Math.max(1, ...counts); const gap = 8; const barWidth = (width - gap * (counts.length - 1)) / counts.length;
+  counts.forEach((count, index) => {
+    const barHeight = Math.max(count ? 5 : 1, count / max * (height - 28));
+    const gradient = context.createLinearGradient(0, height - barHeight, 0, height);
+    gradient.addColorStop(0, index >= 3 ? "#44f08a" : index >= 2 ? "#39e7ff" : "#ff8a3d"); gradient.addColorStop(1, "rgba(36,87,255,.28)");
+    context.fillStyle = gradient; context.fillRect(index * (barWidth + gap), height - barHeight - 16, barWidth, barHeight);
+    context.fillStyle = "rgba(245,248,251,.78)"; context.font = "9px system-ui, sans-serif"; context.textAlign = "center";
+    context.fillText(String(count), index * (barWidth + gap) + barWidth / 2, height - 3);
+  });
+  context.textAlign = "left";
+}
+
+function routeSummary(contact) {
+  const raw = Number(contact?.outPathLen); const packed = Number.isFinite(raw) ? raw & 0xff : 0xff;
+  const hops = packed === 0xff ? null : packed & 0x3f;
+  return { hops, label: hops === null ? "route unknown" : hops === 0 ? "direct" : `${hops} hop${hops === 1 ? "" : "s"}` };
+}
+
+function renderNearbyBars() {
+  const host = $("dashboard-nearby-bars"); host.replaceChildren();
+  const now = Math.floor(Date.now() / 1000); const nodes = state.nearby.slice(0, 6);
+  if (!nodes.length) { host.append(element("p", "empty-state", "Waiting for node adverts.")); return; }
+  nodes.forEach((contact) => {
+    const age = Math.max(0, now - Number(contact.lastAdvert || now));
+    const freshness = Math.max(5, 100 - Math.min(100, age / 216));
+    const row = element("div", "nearby-bar"); const track = element("span", "bar-track"); const fill = document.createElement("i");
+    fill.style.width = `${freshness}%`; track.append(fill);
+    row.append(element("strong", "", contact.advName || "Unnamed node"), track, element("span", "", `${routeSummary(contact).label} · ${formatAge(contact.lastAdvert)}`));
+    host.append(row);
+  });
 }
 
 function renderMessages() {
@@ -774,10 +820,7 @@ function renderNearby() {
     const card = element("article", "card nearby-card");
     const avatar = element("span", "avatar", initials(contact.advName));
     const body = element("div");
-    const rawPath = Number(contact.outPathLen);
-    const packedPath = Number.isFinite(rawPath) ? rawPath & 0xff : 0xff;
-    const hops = packedPath === 0xff ? null : packedPath & 0x3f;
-    const route = hops === null ? "route unknown" : hops ? `${hops} hop${hops === 1 ? "" : "s"}` : "direct advert";
+    const route = routeSummary(contact).label;
     const location = advertisedLocation(contact);
     body.append(element("p", "eyebrow", contact.type === 2 ? "REPEATER" : contact.type === 3 ? "ROOM" : "CONTACT"), element("h3", "", contact.advName || "Unnamed node"), element("p", "", `ID ${hex(contact.publicKey, 5)} · ${route}${location ? ` · ${location.lat.toFixed(3)}, ${location.lon.toFixed(3)}` : ""}`));
     const time = element("time", "", formatAge(contact.lastAdvert));
@@ -789,10 +832,38 @@ function renderNearby() {
   }
 }
 
+function drawHeardView(context, width, height) {
+  const nodes = state.nearby.slice(0, 64); const now = Math.floor(Date.now() / 1000);
+  const direct = nodes.filter((node) => routeSummary(node).hops === 0).length;
+  text("map-located", `${nodes.length} heard`); text("map-unlocated", `${direct} direct · ${nodes.length - direct} routed/unknown`);
+  $("map-empty").hidden = Boolean(nodes.length);
+  const gradient = context.createRadialGradient(width / 2, height / 2, 12, width / 2, height / 2, Math.max(width, height) * .62);
+  gradient.addColorStop(0, "#10202a"); gradient.addColorStop(1, "#070b10"); context.fillStyle = gradient; context.fillRect(0, 0, width, height);
+  const cx = width / 2; const cy = height / 2; const maxRadius = Math.max(62, Math.min(width, height) * .42);
+  const rings = [maxRadius * .28, maxRadius * .56, maxRadius * .82];
+  context.strokeStyle = "rgba(57,231,255,.14)"; context.lineWidth = 1;
+  rings.forEach((radius, index) => { context.beginPath(); context.arc(cx, cy, radius, 0, Math.PI * 2); context.stroke(); context.fillStyle = "rgba(141,152,167,.62)"; context.font = "9px system-ui, sans-serif"; context.fillText(index === 0 ? "DIRECT" : index === 1 ? "1 HOP" : "2+ / UNKNOWN", cx + 8, cy - radius + 13); });
+  nodes.forEach((contact, index) => {
+    const route = routeSummary(contact); const ring = route.hops === 0 ? 0 : route.hops === 1 ? 1 : 2;
+    const seed = [...(contact.publicKey || [])].slice(0, 6).reduce((sum, value, offset) => sum + value * (offset + 3), 0) || index * 73;
+    const angle = (seed % 360) * Math.PI / 180; const radius = rings[ring] + ((seed % 17) - 8) * .8;
+    const x = cx + Math.cos(angle) * radius; const y = cy + Math.sin(angle) * radius;
+    const age = Math.max(0, now - Number(contact.lastAdvert || now)); const alpha = Math.max(.3, 1 - Math.min(1, age / 21600));
+    const color = contact.type === 2 ? "#ff8a3d" : contact.type === 3 ? "#ffd447" : "#42a5ff";
+    context.globalAlpha = alpha; context.fillStyle = color; context.shadowColor = color; context.shadowBlur = 10; context.beginPath(); context.arc(x, y, 4, 0, Math.PI * 2); context.fill(); context.shadowBlur = 0;
+    if (index < 18) { context.fillStyle = "#f5f8fb"; context.font = "10px system-ui, sans-serif"; context.fillText((contact.advName || "Unnamed").slice(0, 18), x + 8, y - 6); }
+    context.globalAlpha = 1;
+  });
+  context.fillStyle = "#44f08a"; context.shadowColor = "#44f08a"; context.shadowBlur = 15; context.fillRect(cx - 5, cy - 5, 10, 10); context.shadowBlur = 0;
+  context.fillStyle = "#f5f8fb"; context.font = "700 10px system-ui, sans-serif"; context.fillText("THIS RCC6", cx + 11, cy + 4);
+  context.fillStyle = "rgba(141,152,167,.7)"; context.font = "9px system-ui, sans-serif"; context.fillText("Ring = stored route · brightness = advert freshness", 14, height - 12);
+}
+
 function drawMeshMap() {
   const surface = canvasContext($("mesh-map"), 360);
   if (!surface) return;
   const { context, width, height } = surface;
+  if (state.mapMode === "heard") { drawHeardView(context, width, height); return; }
   const selfLocation = advertisedLocation(state.self);
   const located = state.nearby.map((contact) => ({ contact, location: advertisedLocation(contact) })).filter((entry) => entry.location);
   text("map-located", `${located.length} located`);
@@ -1093,8 +1164,8 @@ function showView(view) {
   document.querySelectorAll(".screen").forEach((screen) => screen.classList.toggle("active", screen.dataset.screen === view));
   document.querySelectorAll(".nav button").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
   const labels = {
-    home: ["Dashboard", "RCC6 ULTIMATE"], messages: ["Messages", "MESH CHAT"],
-    nearby: ["Map", "MESH NETWORK"], radio: ["Radio", "RF HEALTH"], ultimate: ["Device", "HEALTH & SETTINGS"],
+    home: ["Overview", "NEONPOCKETMC"], messages: ["Messages", "CHANNELS & DIRECT"],
+    nearby: ["Nearby", "NODES & LOCATIONS"], radio: ["Radio", "LIVE RF"], ultimate: ["This RCC6", "STORAGE, POWER & DISPLAY"],
   };
   text("screen-title", labels[view]?.[0] || "RCC6 Ultimate");
   text("screen-kicker", labels[view]?.[1] || "NEONPOCKETMC");
@@ -1179,6 +1250,11 @@ $("target-select").addEventListener("change", (event) => selectTarget(event.targ
 $("composer").addEventListener("submit", sendMessage);
 $("message-input").addEventListener("input", updateComposeCount);
 $("nearby-refresh").addEventListener("click", () => exclusive(refreshContacts).then(() => toast("Nearby refreshed")).catch(() => toast("Refresh failed", "error")));
+document.querySelectorAll("[data-map-mode]").forEach((button) => button.addEventListener("click", () => {
+  state.mapMode = button.dataset.mapMode;
+  document.querySelectorAll("[data-map-mode]").forEach((item) => item.classList.toggle("active", item === button));
+  requestAnimationFrame(drawMeshMap);
+}));
 $("refresh-button").addEventListener("click", () => exclusive(syncAll).then(() => toast("Sync complete")).catch(() => toast("Sync failed", "error")));
 $("advert-button").addEventListener("click", async () => {
   $("advert-button").disabled = true;

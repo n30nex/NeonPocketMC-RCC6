@@ -128,6 +128,16 @@ main { grid-column: 2; width: min(100%, 1320px); margin: 0 auto; padding: 24px c
 .health-tile small { margin-bottom: auto; color: var(--muted); font-size: 9px; font-weight: 760; letter-spacing: .12em; }
 .health-tile strong { font-size: 24px; letter-spacing: -.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .health-tile span { color: var(--muted); font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dashboard-analytics { grid-column: 1 / -1; display: grid; grid-template-columns: 1.15fr .85fr; gap: 18px; }
+.analytics-card { min-height: 238px; padding: 22px 24px; }
+.analytics-card canvas { width: 100%; height: 138px; display: block; margin: 14px 0 4px; }
+.signal-scale { display: flex; justify-content: space-between; color: var(--muted); font-size: 9px; }
+.nearby-bars { margin-top: 17px; display: grid; gap: 10px; }
+.nearby-bar { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(110px, 1.25fr) auto; gap: 11px; align-items: center; }
+.nearby-bar strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.nearby-bar .bar-track { height: 7px; overflow: hidden; border-radius: 8px; background: #202731; }
+.nearby-bar .bar-track i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--blue), var(--green)); box-shadow: 0 0 9px rgba(68,240,138,.25); }
+.nearby-bar span { min-width: 68px; color: var(--muted); font-size: 9px; text-align: right; }
 
 .messages-layout { height: calc(100vh - 142px); min-height: 560px; display: grid; grid-template-columns: minmax(230px, 31%) 1fr; }
 .threads-panel { padding: 24px 15px; border-right: 1px solid var(--line); overflow: hidden; }
@@ -170,6 +180,9 @@ main { grid-column: 2; width: min(100%, 1320px); margin: 0 auto; padding: 24px c
 .page-head p:not(.eyebrow) { max-width: 680px; margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 .icon-button { width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 13px; color: var(--muted); background: var(--panel); }
 .icon-button:hover { color: var(--green); border-color: rgba(68, 240, 138, .3); }
+.map-switch { width: max-content; margin: -8px 0 14px; padding: 4px; display: flex; gap: 3px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.map-switch button { min-height: 38px; padding: 0 14px; border-radius: 9px; color: var(--muted); background: transparent; font-size: 10px; font-weight: 720; }
+.map-switch button.active { color: #03130a; background: var(--green); box-shadow: 0 0 18px rgba(68,240,138,.16); }
 .nearby-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
 .nearby-card { min-height: 128px; padding: 20px; display: grid; grid-template-columns: 42px 1fr auto; gap: 13px; align-items: start; }
 .nearby-card .avatar { width: 42px; height: 42px; color: var(--orange); background: rgba(255, 138, 61, .12); }
@@ -271,9 +284,9 @@ main { grid-column: 2; width: min(100%, 1320px); margin: 0 auto; padding: 24px c
   section[data-screen="home"].active { display: flex; flex-direction: column; }
   .hero { min-height: 245px; padding: 24px; grid-template-columns: 1fr 105px; }.hero-copy h2 { font-size: clamp(36px, 12vw, 56px); }.mesh-orbit { width: 100px; }.mesh-orbit::before { inset: 14px; }.mesh-orbit::after { inset: 33px; }.mesh-orbit i:nth-child(1) { top: 9px; left: 49px; }.mesh-orbit i:nth-child(2) { right: 13px; bottom: 20px; }.mesh-orbit i:nth-child(3) { left: 8px; bottom: 33px; }.hero-stats { gap: 25px; overflow: hidden; }.hero-stats strong { font-size: 11px; }
   .network-banner { grid-template-columns: 44px 1fr; }.network-banner .primary-button { grid-column: 1 / -1; width: 100%; }.dashboard-grid { order: -1; margin: 0 0 12px; grid-template-columns: 1fr; gap: 12px; }.feature-card { min-height: 156px; padding: 18px; }.feature-card .preview { margin: 12px 0 6px; }.radio-strip { grid-column: auto; grid-template-columns: 1fr; gap: 13px; }.radio-meta { justify-content: flex-start; }
-  .dashboard-activity { grid-column: auto; padding: 18px; }.dashboard-health { grid-column: auto; grid-template-columns: 1fr 1fr; }.health-tile { min-height: 98px; }
+  .dashboard-activity { grid-column: auto; padding: 18px; }.dashboard-health { grid-column: auto; grid-template-columns: 1fr 1fr; }.health-tile { min-height: 98px; }.dashboard-analytics { grid-column: auto; grid-template-columns: 1fr; gap: 12px; }.analytics-card { min-height: 220px; padding: 18px; }.nearby-bar { grid-template-columns: minmax(80px,1fr) minmax(80px,1fr) 62px; }
   .messages-layout { height: calc(100dvh - 153px); min-height: 520px; grid-template-columns: 1fr; }.threads-panel { display: none; }.conversation-head { min-height: 61px; padding: 10px 14px; }.message-list { padding: 15px 12px; }.bubble { max-width: 88%; }.composer { padding: 9px 10px max(10px, env(safe-area-inset-bottom)); }
-  .nearby-grid { grid-template-columns: 1fr; }.nearby-card { min-height: 112px; }.mesh-map-card { min-height: 360px; }.mesh-map-card #mesh-map { height: 350px; }.map-badge { top: 10px; right: 10px; }
+  .nearby-grid { grid-template-columns: 1fr; }.nearby-card { min-height: 112px; }.mesh-map-card { min-height: 360px; }.mesh-map-card #mesh-map { height: 350px; }.map-badge { top: 10px; right: 10px; }.map-switch { width: 100%; }.map-switch button { flex: 1; }
   .radio-grid { gap: 12px; }.signal-card { padding: 20px; }.signal-readout { margin-top: 24px; }.metric { min-height: 112px; padding: 16px; }.packet-card { padding: 19px; }.packet-stats { grid-template-columns: 1fr 1fr; gap: 18px; }
   .ultimate-hero{min-height:210px;padding:22px;grid-template-columns:1fr 95px}.ultimate-gate{width:90px;height:90px}.ultimate-gate small{display:none}.ultimate-metrics{grid-template-columns:1fr 1fr}.ultimate-grid,.ultimate-settings-grid{grid-template-columns:1fr}.ultimate-chart-card,.ultimate-nodes,.ultimate-history{padding:18px}.ultimate-phrases{grid-template-columns:1fr}
   .more-grid { grid-template-columns: 1fr; }.device-card { min-height: 410px; }.action-card, .about-card { align-items: flex-start; flex-direction: column; }.action-buttons { width: 100%; flex-direction: column; }.primary-button, .secondary-button { width: 100%; }.toast-stack { bottom: calc(78px + env(safe-area-inset-bottom)); }.network-dialog { padding: 20px; }.dialog-actions { flex-direction: column-reverse; }.dialog-actions button { width: 100%; }
