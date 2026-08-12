@@ -162,6 +162,7 @@ struct UltimateSettings {
   uint16_t scan_cadence_ms;
   bool private_notifications;
   int16_t battery_calibration_mv;
+  uint16_t battery_capacity_mah;
   uint8_t power_profile;
   char quick_phrases[8][48];
 };
@@ -206,7 +207,7 @@ class UltimateService {
     uint8_t private_notifications;
     int16_t battery_calibration_mv;
     uint8_t power_profile;
-    uint8_t reserved[2];
+    uint16_t battery_capacity_mah;
     char quick_phrases[8][48];
     uint32_t crc32;
   };
@@ -357,6 +358,7 @@ public:
                         uint16_t ordinal, UltimateHistoryRecord& record) const;
   uint32_t getNewestSequence() const { return meta.count ? meta.next_sequence - 1 : 0; }
   bool markRead(uint32_t sequence);
+  bool markAllRead();
   bool clearHistory();
   bool setHistoryCapacity(uint16_t capacity);
   bool updateSettings(const UltimateSettings& updated);

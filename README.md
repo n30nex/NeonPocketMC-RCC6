@@ -173,7 +173,7 @@ pio run -e heltec_rcc6_ultimate_companion_ble
 pio run -e heltec_rcc6_ultimate_companion_web
 ```
 
-Ultimate USB CLI Rescue adds `np status`, NDJSON history export, confirmed history clear, retention, privacy, cadence, and quick-phrase commands. Enter CLI Rescue with the normal early-boot Hold gesture; type `help` and see [the Ultimate 2.2 guide](docs/releases/2.2-RC1.md).
+Ultimate USB CLI Rescue adds `np status`, NDJSON history export, confirmed history clear, retention, privacy, cadence, battery, and quick-phrase commands. Enter CLI Rescue with the normal early-boot Hold gesture; type `help` and see [the Ultimate 2.2 guide](docs/releases/2.2-RC1.md). Set the installed pack size with `set.batterysize 420` (or `np battery size 420`); use `0` to return to unknown.
 
 ## Hardware and power notes
 
@@ -182,6 +182,7 @@ Ultimate USB CLI Rescue adds `np status`, NDJSON history export, confirmed histo
 - DIO flash mode
 - Protected single-cell 3.7 V Li-ion/LiPo only on `VBAT`; never connect an unregulated solar panel directly
 - Low-battery warning below 3.45 V, cleared above 3.60 V; no automatic low-voltage shutdown
+- RCC6 has no qualified USB-present input. Runtime learning begins only after a sustained falling-voltage trend; pack capacity does not calibrate the ADC. Compare against a multimeter and set the separate signed millivolt offset when needed.
 
 ## Upstream and license
 

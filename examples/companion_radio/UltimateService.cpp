@@ -69,6 +69,7 @@ void UltimateService::setDefaults() {
   settings.scan_cadence_ms = 650;
   settings.private_notifications = false;
   settings.battery_calibration_mv = 0;
+  settings.battery_capacity_mah = 0;
   settings.power_profile = static_cast<uint8_t>(UltimatePowerProfile::Balanced);
   static const char* defaults[8] = {
       "On my way", "All good", "Need help", "Please repeat",
@@ -127,6 +128,9 @@ bool UltimateService::loadSettings() {
   }
   settings.private_notifications = stored.private_notifications != 0;
   settings.battery_calibration_mv = constrain(stored.battery_calibration_mv, -300, 300);
+  settings.battery_capacity_mah = stored.battery_capacity_mah == 0 ||
+      (stored.battery_capacity_mah >= 50 && stored.battery_capacity_mah <= 20000)
+          ? stored.battery_capacity_mah : 0;
   settings.power_profile = stored.power_profile <=
       static_cast<uint8_t>(UltimatePowerProfile::Battery)
           ? stored.power_profile : static_cast<uint8_t>(UltimatePowerProfile::Balanced);
@@ -145,6 +149,7 @@ bool UltimateService::saveSettings() {
   stored.scan_cadence_ms = settings.scan_cadence_ms;
   stored.private_notifications = settings.private_notifications ? 1 : 0;
   stored.battery_calibration_mv = settings.battery_calibration_mv;
+  stored.battery_capacity_mah = settings.battery_capacity_mah;
   stored.power_profile = settings.power_profile;
   for (uint8_t i = 0; i < 8; i++) {
     copyText(stored.quick_phrases[i], sizeof(stored.quick_phrases[i]),
@@ -954,6 +959,37 @@ bool UltimateService::markRead(uint32_t sequence) {
   return false;
 }
 
+bool UltimateService::markAllRead() {
+  if (snapshot.unread_count == 0) return true;
+  File file = filesystem->open(history_path, "r+");
+  if (!file) return false;
+  bool success = true;
+  UltimateHistoryRecord record;
+  for (uint16_t offset = 0; offset < meta.count; offset++) {
+    const uint16_t slot = (meta.head + meta.capacity - 1 - offset) % meta.capacity;
+    const size_t position = static_cast<size_t>(slot) * sizeof(record);
+    const bool valid = file.seek(position) &&
+        file.read(reinterpret_cast<uint8_t*>(&record), sizeof(record)) == sizeof(record) &&
+        record.magic == history_magic &&
+        record.crc32 == crc32(&record, offsetof(UltimateHistoryRecord, crc32));
+    if (!valid) {
+      success = false;
+    } else if ((record.flags & (ULTIMATE_HISTORY_INCOMING | ULTIMATE_HISTORY_READ)) ==
+               ULTIMATE_HISTORY_INCOMING) {
+      record.flags |= ULTIMATE_HISTORY_READ;
+      record.crc32 = crc32(&record, offsetof(UltimateHistoryRecord, crc32));
+      success = file.seek(position) &&
+          file.write(reinterpret_cast<const uint8_t*>(&record), sizeof(record)) == sizeof(record) &&
+          success;
+    }
+    if ((offset & 31U) == 31U) yield();
+  }
+  file.flush();
+  file.close();
+  rebuildThreads();
+  return success;
+}
+
 bool UltimateService::clearHistory() {
   if (!removeIfExists(history_path)) return false;
   if (!ensureJournalFile(meta.capacity)) return false;
@@ -1054,6 +1090,8 @@ bool UltimateService::updateSettings(const UltimateSettings& updated) {
       (updated.scan_cadence_ms != 450 && updated.scan_cadence_ms != 650 &&
        updated.scan_cadence_ms != 900 && updated.scan_cadence_ms != 1200) ||
       updated.battery_calibration_mv < -300 || updated.battery_calibration_mv > 300 ||
+      (updated.battery_capacity_mah != 0 &&
+       (updated.battery_capacity_mah < 50 || updated.battery_capacity_mah > 20000)) ||
       updated.power_profile > static_cast<uint8_t>(UltimatePowerProfile::Battery)) {
     return false;
   }

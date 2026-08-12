@@ -1062,6 +1062,7 @@ function renderUltimate() {
     $("ultimate-history-cap").value = String(settings.historyCapacity);
     $("ultimate-cadence").value = String(settings.scanCadenceMs);
     $("ultimate-power-profile").value = String(settings.powerProfile || 0);
+    $("ultimate-battery-capacity").value = String(settings.batteryCapacityMah || 0);
     $("ultimate-battery-calibration").value = String(settings.batteryCalibrationMv || 0);
     $("ultimate-private").checked = Boolean(settings.privateNotifications);
     const phrases = $("ultimate-phrases");
@@ -1242,6 +1243,7 @@ $("ultimate-settings-form").addEventListener("submit", async (event) => {
         historyCapacity: Number($("ultimate-history-cap").value),
         scanCadenceMs: Number($("ultimate-cadence").value),
         powerProfile: Number($("ultimate-power-profile").value),
+        batteryCapacityMah: Number($("ultimate-battery-capacity").value),
         batteryCalibrationMv: Number($("ultimate-battery-calibration").value),
         privateNotifications: $("ultimate-private").checked,
         quickPhrases,

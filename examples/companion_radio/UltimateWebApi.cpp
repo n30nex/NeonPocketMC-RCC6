@@ -190,6 +190,8 @@ void UltimateWebApi::handleStatus() {
   json += F(",\"batteryMv\":"); json += s.battery_mv;
   json += F(",\"batteryTrendMvPerHour\":"); json += s.battery_trend_mv_per_hour;
   json += F(",\"batteryRuntimeMinutes\":"); json += s.battery_runtime_minutes;
+  json += F(",\"batteryCapacityMah\":");
+  json += ultimate_service.getSettings().battery_capacity_mah;
   json += F(",\"batteryProjectionValid\":");
   json += s.battery_projection_valid ? F("true") : F("false");
   json += F(",\"historyCount\":"); json += s.history_count;
@@ -302,6 +304,7 @@ void UltimateWebApi::handleGetSettings() {
   json += F(",\"scanCadenceMs\":"); json += settings.scan_cadence_ms;
   json += F(",\"privateNotifications\":"); json += settings.private_notifications ? F("true") : F("false");
   json += F(",\"batteryCalibrationMv\":"); json += settings.battery_calibration_mv;
+  json += F(",\"batteryCapacityMah\":"); json += settings.battery_capacity_mah;
   json += F(",\"powerProfile\":"); json += settings.power_profile;
   json += F(",\"quickPhrases\":[");
   for (uint8_t i = 0; i < 8; i++) {
@@ -321,6 +324,14 @@ void UltimateWebApi::handlePutSettings() {
   if (extractNumber(body, "historyCapacity", number)) updated.history_capacity = number;
   if (extractNumber(body, "scanCadenceMs", number)) updated.scan_cadence_ms = number;
   if (extractNumber(body, "batteryCalibrationMv", number)) updated.battery_calibration_mv = number;
+  if (extractNumber(body, "batteryCapacityMah", number)) {
+    if (number != number || number < 0 || number > 20000 ||
+        number != static_cast<uint16_t>(number) ||
+        (number != 0 && (number < 50 || number > 20000))) {
+      sendJson(400, F("{\"error\":\"invalid-battery-capacity\"}")); return;
+    }
+    updated.battery_capacity_mah = static_cast<uint16_t>(number);
+  }
   if (extractNumber(body, "powerProfile", number)) updated.power_profile = number;
   if (extractBool(body, "privateNotifications", boolean)) updated.private_notifications = boolean;
   int at = body.indexOf("\"quickPhrases\"");
