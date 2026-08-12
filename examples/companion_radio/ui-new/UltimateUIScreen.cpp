@@ -1110,7 +1110,7 @@ void UltimateUIScreen::handleToolAction() {
     task->showAlert(saved ? (updated.private_notifications ? "Private alerts on" : "Previews on")
                           : "Settings failed", 1000, saved ? NEON_GREEN : NEON_RED);
   } else if (selection == 7) {
-    task->showAlert("Ultimate 2.1 / MeshCore 1.17.1", 1200, NEON_GREEN);
+    task->showAlert("Ultimate 2.3 RC2 / MC 1.17.0+RX", 1200, NEON_GREEN);
   } else {
     enterView(View::Root);
   }
