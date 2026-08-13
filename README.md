@@ -25,7 +25,7 @@ This is a direct, checksum-verified capture of the RCC6 220×128 framebuffer run
 
 ## Release status
 
-The proven v1 line remains available as [`v1.2.0-rc.2`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.2), and earlier Ultimate builds remain available through [`v2.3.0-rc.2`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v2.3.0-rc.2). **Ultimate v2.3 RC3** adds a native-USB companion choice beside the existing BLE and authenticated Web modes. Use only files attached to a named release—short-lived Actions artifacts are development builds.
+The proven v1 line remains available as [`v1.2.0-rc.2`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.2). Current [`v2.3.0-rc.3`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v2.3.0-rc.3) adds native USB beside the BLE and authenticated Web modes. Use only files attached to a named release—short-lived Actions artifacts are development builds.
 
 ## Ultimate Companion v2
 
