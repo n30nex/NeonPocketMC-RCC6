@@ -9,6 +9,8 @@ Experimental companion firmware for the **Heltec RadioCore RCC6** with its attac
 > [!CAUTION]
 > **RCC6 only—do not flash RC32, RC52, or other RadioCore hardware.** Attach a suitable antenna before transmitting.
 
+**Guided install:** [flasher.canadaverse.org](https://flasher.canadaverse.org/)
+
 <p align="center">
   <img src="docs/images/neon-pocket-on-device.jpg" alt="NeonPocket dashboard running on a Heltec RadioCore RCC6" width="760">
 </p>
