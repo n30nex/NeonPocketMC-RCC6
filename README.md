@@ -27,6 +27,8 @@ This is a direct, checksum-verified capture of the RCC6 220×128 framebuffer run
 
 The proven v1 line remains available as [`v1.2.0-rc.2`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.2). Current [`v2.3.0-rc.3`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v2.3.0-rc.3) adds native USB beside the BLE and authenticated Web modes. Use only files attached to a named release—short-lived Actions artifacts are development builds.
 
+Using RCC6 without the TFT? [NeonPocketMC-RCC6-Headless](https://github.com/n30nex/NeonPocketMC-RCC6-Headless) provides dedicated BLE, native USB/serial, and Wi-Fi Web/TCP companion images with no display or framebuffer code.
+
 ## Ultimate Companion v2
 
 Ultimate v2 ships as three separate images. They share the same standalone six-area NeonPocket experience and never run Bluetooth, native USB, and Wi-Fi at the same time:
