@@ -19,6 +19,7 @@ web = text("examples/companion_radio/UltimateWebApi.cpp")
 ui = text("examples/companion_radio/ui-new/UltimateUIScreen.cpp")
 ui_task = text("examples/companion_radio/ui-new/UITask.cpp")
 mesh = text("examples/companion_radio/MyMesh.cpp")
+board = text("variants/heltec_rcc6/heltec_rcc6.cpp")
 
 required = {
     "Ultimate BLE environment": "[env:heltec_rcc6_ultimate_companion_ble]" in platform,
@@ -61,6 +62,15 @@ required = {
          "battery_capacity_mah", "usb_host_connected", "power_profile"]) and
         "usb_serial_jtag_is_connected" in service_cpp and
         "set.batterysize " in mesh and "np battery size " in mesh,
+    "plausible battery readings": "measured <= 4500U" in board and
+        "calibrated > 0 && calibrated <= 4500" in service_cpp and
+        all(value in ui for value in ['strcpy(battery, "--")',
+                                      'strcpy(line, "BATTERY --")',
+                                      'strcpy(replacement, "BATTERY UNAVAILABLE")']) and
+        '"UP %luh%02lum   BAT --"' in ui_task and
+        'display.print("--")' in ui_task and
+        '(key === "battery" && raw <= 0)' in text("examples/companion_radio/webui/src/app.js") and
+        'ultimate.batteryMv > 0' in text("examples/companion_radio/webui/src/app.js"),
     "triple press navigation": "handleTriplePress" in ui and "markAllRead" in service_cpp and
         "handleTripleClick" in ui_task and "3X CLEAR" in ui,
     "artifact verifier": (ROOT / "tools/verify_ultimate_artifact.py").is_file(),
