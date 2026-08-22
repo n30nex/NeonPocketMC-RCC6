@@ -25,7 +25,7 @@ This is a direct, checksum-verified capture of the RCC6 220×128 framebuffer run
 
 ## Release status
 
-The proven v1 line remains available as [`v1.2.0-rc.2`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.2). Current [`v2.3.0-rc.3`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v2.3.0-rc.3) adds native USB beside the BLE and authenticated Web modes. Use only files attached to a named release—short-lived Actions artifacts are development builds.
+The proven v1 line remains available as [`v1.2.0-rc.2`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.2). Current [`v2.3.0-rc.4`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v2.3.0-rc.4) adds native USB beside the BLE and authenticated Web modes, and makes saved-location advert sharing explicit. Use only files attached to a named release—short-lived Actions artifacts are development builds.
 
 Using RCC6 without the TFT? [NeonPocketMC-RCC6-Headless](https://github.com/n30nex/NeonPocketMC-RCC6-Headless) provides dedicated BLE, native USB/serial, and Wi-Fi Web/TCP companion images with no display or framebuffer code.
 
@@ -78,7 +78,7 @@ These are direct, CRC-checked captures of the framebuffer rendered by the connec
 
 Capture provenance and the unscaled source-frame details are recorded in [`docs/images/ultimate/README.md`](docs/images/ultimate/README.md).
 
-The Web image is organized into Overview, Messages, Nearby, Radio, and This RCC6. It adds hourly traffic bars, signal distribution, nearby freshness, delivery/history health, persistent device history, explicit browser-location transfer, and signed app-only OTA. The Nearby map plots only valid coordinates included in MeshCore adverts; unlocated radios remain in the route-and-recency view without an invented marker or stale signal claim. Location is requested only after pressing the Location button, displayed for confirmation, and then written to the existing MeshCore latitude/longitude preferences. No background tracking is performed.
+The Web image is organized into Overview, Messages, Nearby, Radio, and This RCC6. It adds hourly traffic bars, signal distribution, nearby freshness, delivery/history health, persistent device history, explicit browser-location transfer, and signed app-only OTA. The Nearby map plots only valid coordinates included in MeshCore adverts; unlocated radios remain in the route-and-recency view without an invented marker or stale signal claim. Location is requested only after pressing the Location button. Coordinates, accuracy, and whether to include the saved location in adverts are shown for explicit confirmation before saving; no background tracking is performed.
 
 > [!WARNING]
 > **TCP port 5000 is always enabled in the Ultimate Web image. Any client on the trusted local network can access the complete MeshCore companion/admin protocol, including sensitive administration commands.** HTTP authentication and the browser API allowlist do not protect raw TCP. Use Web mode only on a trusted private LAN.
@@ -158,12 +158,12 @@ Replace `COM21` with the port actually shown by your computer. Use the Web/AP fi
 Normal Ultimate installation remains application-only at `0x10000`; it does not replace the bootloader, partition table, NVS, or SPIFFS:
 
 ```text
-python -m esptool --chip esp32c6 --port COM21 write-flash 0x10000 NeonPocketMC-RCC6-Ultimate-v2.3.0-rc.3-BLE-app.bin
+python -m esptool --chip esp32c6 --port COM21 write-flash 0x10000 NeonPocketMC-RCC6-Ultimate-v2.3.0-rc.4-BLE-app.bin
 ```
 
 Use the USB filename for the native-USB binary companion or the Web filename for Web mode. Identity-preserving merged recovery images are provided separately and are for bootloader/partition recovery at `0x0`, not ordinary updates. Never erase the whole chip. The USB image carries the standard binary MeshCore companion protocol; it is not the text CLI.
 
-The WebUI accepts only a signed `NeonPocketMC-RCC6-Ultimate-Web-v2.3.0-rc.3.npu` package. Firmware verifies the RCC6 target, Web mode, application length, SHA-256, and Ed25519 signature before selecting the inactive OTA application slot. The existing bootloader does not guarantee automatic rollback from a boot-breaking app; keep USB access and the matching app/recovery images available. BLE and native-USB firmware have no Web OTA and are updated over USB only.
+The WebUI accepts only a signed `NeonPocketMC-RCC6-Ultimate-Web-v2.3.0-rc.4.npu` package. Firmware verifies the RCC6 target, Web mode, application length, SHA-256, and Ed25519 signature before selecting the inactive OTA application slot. The existing bootloader does not guarantee automatic rollback from a boot-breaking app; keep USB access and the matching app/recovery images available. BLE and native-USB firmware have no Web OTA and are updated over USB only.
 
 ## Build
 
@@ -178,7 +178,7 @@ pio run -e heltec_rcc6_ultimate_companion_ble
 pio run -e heltec_rcc6_ultimate_companion_web
 ```
 
-Ultimate USB CLI Rescue adds `np status`, NDJSON history export, confirmed history clear, retention, privacy, cadence, battery, and quick-phrase commands. Enter CLI Rescue with the normal early-boot Hold gesture; type `help` and see [the Ultimate 2.3 RC3 guide](docs/releases/2.3-RC3.md). Set the installed pack size with `set.batterysize 420` (or `np battery size 420`); use `0` to return to unknown.
+Ultimate USB CLI Rescue adds `np status`, NDJSON history export, confirmed history clear, retention, privacy, cadence, battery, and quick-phrase commands. Enter CLI Rescue with the normal early-boot Hold gesture; type `help` and see [the Ultimate 2.3 RC4 guide](docs/releases/2.3-RC4.md). Set the installed pack size with `set.batterysize 420` (or `np battery size 420`); use `0` to return to unknown.
 
 ## Hardware and power notes
 
