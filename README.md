@@ -96,6 +96,26 @@ Both images include the native NeonPocket display, animated branded startup, loc
 
 This branch uses the official MeshCore **1.17.0** baseline plus the relevant post-release SX126x boosted-RX-gain persistence fix (`6f491f30`). It does not claim a nonexistent official 1.17.1 tag. Each build embeds its own exact Git SHA.
 
+### Stable v1 on-device gallery
+
+These direct 220×128 framebuffer captures document the stable v1 interface. They were captured from a temporary diagnostic build based on `v1.2.0-rc.1`; the capture hook is not included in public firmware. For the current Ultimate interface, use the gallery above.
+
+| Home | Nearby |
+| --- | --- |
+| ![Stable v1 Home dashboard](docs/images/rcc6-ui/rcc6-home.png) | ![Stable v1 Nearby page](docs/images/rcc6-ui/rcc6-nearby.png) |
+
+| Radio | Advert |
+| --- | --- |
+| ![Stable v1 Radio statistics](docs/images/rcc6-ui/rcc6-radio.png) | ![Stable v1 Advert action](docs/images/rcc6-ui/rcc6-advert.png) |
+
+| Quick Reply | Diagnostics |
+| --- | --- |
+| ![Stable v1 Quick Reply page](docs/images/rcc6-ui/rcc6-quick-reply.png) | ![Stable v1 Diagnostics page](docs/images/rcc6-ui/rcc6-diagnostics.png) |
+
+![Stable v1 Power confirmation](docs/images/rcc6-ui/rcc6-power.png)
+
+Capture provenance and checksums are recorded in [`docs/images/rcc6-ui/README.md`](docs/images/rcc6-ui/README.md).
+
 ## Storage behavior
 
 Earlier RCC6 builds could stop at `STORAGE ERROR` on a new or fully recovered device because an erased SPIFFS partition is not yet a filesystem. This version distinguishes that safe first-boot state from damaged data:
