@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - main
-      - codex/**
   pull_request:
     branches:
       - main
@@ -14,6 +13,25 @@ permissions:
   contents: read
 
 jobs:
+  tests:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify checkout
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+
+      - name: Set up build environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Run upstream unit tests
+        run: pio test -e native -e native_kiss_modem -vv
+
   webui:
     runs-on: ubuntu-latest
     defaults:
@@ -29,6 +47,9 @@ jobs:
         shell: bash
         run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
 
+      - name: Verify demo-scene splash contract
+        run: python ../ui-new/verify_demoscene_splash.py
+
       - name: Build and verify embedded WebUI
         run: |
           npm ci
@@ -36,14 +57,27 @@ jobs:
           git diff --exit-code -- .
 
   firmware:
-    needs: webui
+    needs: [tests, webui]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        environment:
-          - heltec_rcc6_companion_radio_ble
-          - heltec_rcc6_companion_radio_web_ap
+        include:
+          - environment: heltec_rcc6_companion_radio_ble
+            ultimate: false
+            ota: false
+          - environment: heltec_rcc6_companion_radio_web_ap
+            ultimate: false
+            ota: false
+          - environment: heltec_rcc6_ultimate_companion_ble
+            ultimate: true
+            ota: false
+          - environment: heltec_rcc6_ultimate_companion_usb
+            ultimate: true
+            ota: false
+          - environment: heltec_rcc6_ultimate_companion_web
+            ultimate: true
+            ota: true
 
     steps:
       - name: Check out exact source
@@ -59,7 +93,16 @@ jobs:
         uses: ./.github/actions/setup-build-environment
 
       - name: Build ${{ matrix.environment }}
-        run: pio run -e ${{ matrix.environment }} -t mergebin
+        env:
+          ULTIMATE_BUILD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          pio run -e ${{ matrix.environment }}
+          out=".pio/build/${{ matrix.environment }}"
+          python tools/merge_rcc6_image.py \
+            --bootloader "$out/bootloader.bin" \
+            --partitions "$out/partitions.bin" \
+            --app "$out/firmware.bin" \
+            --output "$out/firmware-merged.bin"
 
       - name: Verify and hash images
         shell: bash
@@ -84,6 +127,58 @@ jobs:
             "$out/partitions.bin" \
             > "$out/SHA256SUMS"
 
+      - name: Verify Ultimate budgets and markers
+        if: matrix.ultimate
+        shell: bash
+        run: |
+          out=".pio/build/${{ matrix.environment }}"
+          python tools/verify_ultimate_source.py
+          python tools/verify_ultimate_artifact.py \
+            --app "$out/firmware.bin" \
+            --merged "$out/firmware-merged.bin" \
+            --bootloader "$out/bootloader.bin" \
+            --partitions "$out/partitions.bin" \
+            --elf "$out/firmware.elf" \
+            --sha "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --version 2.3.0-rc.4
+
+      - name: Build and verify signed Ultimate Web package
+        if: matrix.ota && github.event_name != 'pull_request'
+        shell: bash
+        env:
+          ULTIMATE_OTA_SIGNING_KEY_PEM: ${{ secrets.ULTIMATE_OTA_SIGNING_KEY_PEM }}
+        run: |
+          test -n "$ULTIMATE_OTA_SIGNING_KEY_PEM"
+          out=".pio/build/${{ matrix.environment }}"
+          key="$RUNNER_TEMP/ultimate-ota-private.pem"
+          printf '%s\n' "$ULTIMATE_OTA_SIGNING_KEY_PEM" > "$key"
+          chmod 600 "$key"
+          package="$out/NeonPocketMC-RCC6-Ultimate-Web-v2.3.0-rc.4.npu"
+          python tools/package_ultimate_ota.py pack \
+            --app "$out/firmware.bin" --output "$package" --key "$key" \
+            --version 2.3.0-rc.4 \
+            --git-sha "${{ github.event.pull_request.head.sha || github.sha }}"
+          rm -f "$key"
+          python tools/package_ultimate_ota.py verify \
+            --package "$package" --public-key tools/ultimate_ota_public.pem
+          python tools/package_ultimate_ota.py self-test
+          cp "$package" "$RUNNER_TEMP/corrupted.npu"
+          python - "$RUNNER_TEMP/corrupted.npu" <<'PY'
+          from pathlib import Path
+          import sys
+          path = Path(sys.argv[1])
+          blob = bytearray(path.read_bytes())
+          blob[-1] ^= 1
+          path.write_bytes(blob)
+          PY
+          ! python tools/package_ultimate_ota.py verify \
+            --package "$RUNNER_TEMP/corrupted.npu" \
+            --public-key tools/ultimate_ota_public.pem
+          ! python tools/package_ultimate_ota.py verify \
+            --package "$package" --public-key tools/ultimate_ota_public.pem \
+            --target wrong_board
+          sha256sum "$package" >> "$out/SHA256SUMS"
+
       - name: Upload exact firmware candidate
         uses: actions/upload-artifact@v4
         with:
@@ -97,3 +192,15 @@ jobs:
             .pio/build/${{ matrix.environment }}/bootloader.bin
             .pio/build/${{ matrix.environment }}/partitions.bin
             .pio/build/${{ matrix.environment }}/SHA256SUMS
+            .pio/build/${{ matrix.environment }}/*.npu
+
+  required-firmware:
+    name: required-firmware
+    if: ${{ always() }}
+    needs: firmware
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every firmware image
+        env:
+          FIRMWARE_RESULT: ${{ needs.firmware.result }}
+        run: test "$FIRMWARE_RESULT" = success

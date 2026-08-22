@@ -4,44 +4,86 @@
 
 # NeonPocketMC-RCC6
 
-Experimental MeshCore 1.17 companion firmware for the **Heltec RadioCore RCC6** with its attached **220×128 NV3001B TFT**.
+Experimental companion firmware for the **Heltec RadioCore RCC6** with its attached **220×128 NV3001B TFT**. It uses the official MeshCore **1.17.0** source baseline plus the post-release SX126x boosted-RX-gain fix intended for the next receiver maintenance release.
 
 > [!CAUTION]
 > **RCC6 only—do not flash RC32, RC52, or other RadioCore hardware.** Attach a suitable antenna before transmitting.
+
+**Guided install:** [flasher.canadaverse.org](https://flasher.canadaverse.org/)
 
 <p align="center">
   <img src="docs/images/neon-pocket-on-device.jpg" alt="NeonPocket dashboard running on a Heltec RadioCore RCC6" width="760">
 </p>
 
+## Demo-scene startup
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/n30nex/NeonPocketMC/main/docs/images/demoscene/neonpocket-splash.gif" alt="NeonPocketMC animated demo-scene boot sequence" width="660">
+</p>
+
+This is a direct, checksum-verified capture of the RCC6 220×128 framebuffer running the production renderer—not a browser mockup. Exact frame provenance is maintained in the [unified gallery](https://github.com/n30nex/NeonPocketMC/tree/main/docs/images/demoscene).
+
 ## Release status
 
-The current experimental release is [`v1.2.0-rc.1`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.1). It adds the animated NeonPocketMC startup, Diagnostics, and Quick Reply to both companion modes. Use only files attached to that release; short-lived Actions artifacts are development builds.
+The proven v1 line remains available as [`v1.2.0-rc.2`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.2). Current [`v2.3.0-rc.4`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v2.3.0-rc.4) adds native USB beside the BLE and authenticated Web modes, and makes saved-location advert sharing explicit. Use only files attached to a named release—short-lived Actions artifacts are development builds.
 
-## Live interface
+Using RCC6 without the TFT? [NeonPocketMC-RCC6-Headless](https://github.com/n30nex/NeonPocketMC-RCC6-Headless) provides dedicated BLE, native USB/serial, and Wi-Fi Web/TCP companion images with no display or framebuffer code.
 
-These are direct, pixel-for-pixel captures of the 220×128 RGB565 framebuffer running on an RCC6—not mockups. They were captured from a temporary diagnostics build based on this repository's exact [`v1.2.0-rc.1`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.1) source; the capture hook is not included in public firmware.
+## Ultimate Companion v2
 
-<table>
-  <tr>
-    <td align="center"><img src="docs/images/rcc6-ui/rcc6-home.png" alt="RCC6 NeonPocketMC Home dashboard" width="440"><br><strong>Home</strong></td>
-    <td align="center"><img src="docs/images/rcc6-ui/rcc6-nearby.png" alt="RCC6 NeonPocketMC Nearby page" width="440"><br><strong>Nearby</strong></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/images/rcc6-ui/rcc6-radio.png" alt="RCC6 NeonPocketMC Radio statistics" width="440"><br><strong>Radio statistics</strong></td>
-    <td align="center"><img src="docs/images/rcc6-ui/rcc6-advert.png" alt="RCC6 NeonPocketMC Advert action" width="440"><br><strong>Mesh advert</strong></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/images/rcc6-ui/rcc6-quick-reply.png" alt="RCC6 NeonPocketMC Quick Reply page" width="440"><br><strong>One-button Quick Reply</strong></td>
-    <td align="center"><img src="docs/images/rcc6-ui/rcc6-diagnostics.png" alt="RCC6 NeonPocketMC Diagnostics page" width="440"><br><strong>Diagnostics</strong></td>
-  </tr>
-  <tr>
-    <td colspan="2" align="center"><img src="docs/images/rcc6-ui/rcc6-power.png" alt="RCC6 NeonPocketMC Power confirmation" width="440"><br><strong>Power confirmation</strong></td>
-  </tr>
-</table>
+Ultimate v2 ships as three separate images. They share the same standalone six-area NeonPocket experience and never run Bluetooth, native USB, and Wi-Fi at the same time:
 
-Capture provenance and checksums are recorded in [`docs/images/rcc6-ui/README.md`](docs/images/rcc6-ui/README.md).
+| Target | Connectivity |
+| --- | --- |
+| `heltec_rcc6_ultimate_companion_ble` | Standard secure MeshCore BLE companion |
+| `heltec_rcc6_ultimate_companion_usb` | Native-USB binary MeshCore companion |
+| `heltec_rcc6_ultimate_companion_web` | WPA setup AP, local 2.4 GHz Wi-Fi, authenticated WebUI, and TCP/5000 |
 
-## Firmware choices
+The 220×128 TFT runs through a 28,160-byte indexed framebuffer with 20×8 changed-tile transfers. It targets 15 FPS while awake and automatically eases to 10, 8, or 7 FPS only when display transfer time, queue pressure, heap headroom, or the selected Battery profile requires it. It fails closed if its framebuffer, palette, or post-service 32 KiB memory gate cannot be allocated. The demo-scene startup follows real display, radio, storage/history, transport, and memory stages; fatal startup errors remain visible in the same branded renderer.
+
+The on-device experience includes:
+
+- Home, Inbox, Network Explorer, Radio/Diagnostics, Tools, and Power areas;
+- direct and `#channel` threads with persistent local unread state and full paged messages;
+- 8 editable quick phrases with `{name}`, `{battery}`, and `{location}` expansion, a pinned recent target, crash-safe draft resume, and an optional row/column one-switch keyboard;
+- exact latest on-device delivery receipts: queued, on air, transmitted, acknowledged with round-trip time, no ACK, unconfirmed, or failed;
+- recent radios on the configured MeshCore preset only—no automatic retuning;
+- live RF, queue, heap, storage, calibrated battery, display-transfer, error, and airtime metrics;
+- Balanced, Field, and Battery profiles with 60-second, 5-minute, and 30-second TFT timeouts, plus ten-minute voltage trend and time-to-3.45 V estimates;
+- two hours of minute samples in RAM and 168 persisted hourly buckets;
+- an independent `/np/` message journal with Off, 128, 512, or 2,048-record retention;
+- NDJSON history export and separately confirmed erasure.
+
+History is stored as plaintext, matching normal MeshCore storage. Private-notification mode hides message bodies while the screen is locked; it does not encrypt the journal. Lowering retention keeps the newest records. Selecting Off stops new writes and does not erase existing history.
+
+## Ultimate on-device gallery
+
+These are direct, CRC-checked captures of the framebuffer rendered by the connected RCC6—not browser mockups or design comps. They retain the native pixel character of the 220×128 panel and are enlarged 4× with nearest-neighbor scaling.
+
+| Home | Inbox |
+| --- | --- |
+| ![Ultimate Home dashboard](docs/images/ultimate/rcc6-ultimate-home.png) | ![Ultimate Inbox overview](docs/images/ultimate/rcc6-ultimate-inbox.png) |
+
+| Network Explorer | Radio |
+| --- | --- |
+| ![Ultimate Network Explorer](docs/images/ultimate/rcc6-ultimate-network.png) | ![Ultimate Radio dashboard](docs/images/ultimate/rcc6-ultimate-radio.png) |
+
+| Tools | Power |
+| --- | --- |
+| ![Ultimate Tools composer](docs/images/ultimate/rcc6-ultimate-tools.png) | ![Ultimate Power confirmation](docs/images/ultimate/rcc6-ultimate-power.png) |
+
+| Composer targets | Quick phrases |
+| --- | --- |
+| ![Ultimate composer target picker](docs/images/ultimate/rcc6-ultimate-composer-targets.png) | ![Ultimate quick phrase picker](docs/images/ultimate/rcc6-ultimate-composer-phrases.png) |
+
+Capture provenance and the unscaled source-frame details are recorded in [`docs/images/ultimate/README.md`](docs/images/ultimate/README.md).
+
+The Web image is organized into Overview, Messages, Nearby, Radio, and This RCC6. It adds hourly traffic bars, signal distribution, nearby freshness, delivery/history health, persistent device history, explicit browser-location transfer, and signed app-only OTA. The Nearby map plots only valid coordinates included in MeshCore adverts; unlocated radios remain in the route-and-recency view without an invented marker or stale signal claim. Location is requested only after pressing the Location button. Coordinates, accuracy, and whether to include the saved location in adverts are shown for explicit confirmation before saving; no background tracking is performed.
+
+> [!WARNING]
+> **TCP port 5000 is always enabled in the Ultimate Web image. Any client on the trusted local network can access the complete MeshCore companion/admin protocol, including sensitive administration commands.** HTTP authentication and the browser API allowlist do not protect raw TCP. Use Web mode only on a trusted private LAN.
+
+## Stable v1 firmware choices
 
 The repository builds two separate application images:
 
@@ -52,7 +94,27 @@ The repository builds two separate application images:
 
 Both images include the native NeonPocket display, animated branded startup, local direct and `#channel` unread inbox, Nearby and Radio views, flood-scoped Advert action, 60-second screen timeout, battery warning, and one-button controls. RCC6 builds also add a cached Diagnostics page and a six-choice auto-scanning Quick Reply page that replies to the latest direct sender or channel without blocking radio callbacks.
 
-This port is based on MeshCore **1.17.0** at exact upstream commit [`727fc0512ce08bfd7b499e46daa7fca6eeec730d`](https://github.com/meshcore-dev/MeshCore/commit/727fc0512ce08bfd7b499e46daa7fca6eeec730d).
+This branch uses the official MeshCore **1.17.0** baseline plus the relevant post-release SX126x boosted-RX-gain persistence fix (`6f491f30`). It does not claim a nonexistent official 1.17.1 tag. Each build embeds its own exact Git SHA.
+
+### Stable v1 on-device gallery
+
+These direct 220×128 framebuffer captures document the stable v1 interface. They were captured from a temporary diagnostic build based on `v1.2.0-rc.1`; the capture hook is not included in public firmware. For the current Ultimate interface, use the gallery above.
+
+| Home | Nearby |
+| --- | --- |
+| ![Stable v1 Home dashboard](docs/images/rcc6-ui/rcc6-home.png) | ![Stable v1 Nearby page](docs/images/rcc6-ui/rcc6-nearby.png) |
+
+| Radio | Advert |
+| --- | --- |
+| ![Stable v1 Radio statistics](docs/images/rcc6-ui/rcc6-radio.png) | ![Stable v1 Advert action](docs/images/rcc6-ui/rcc6-advert.png) |
+
+| Quick Reply | Diagnostics |
+| --- | --- |
+| ![Stable v1 Quick Reply page](docs/images/rcc6-ui/rcc6-quick-reply.png) | ![Stable v1 Diagnostics page](docs/images/rcc6-ui/rcc6-diagnostics.png) |
+
+![Stable v1 Power confirmation](docs/images/rcc6-ui/rcc6-power.png)
+
+Capture provenance and checksums are recorded in [`docs/images/rcc6-ui/README.md`](docs/images/rcc6-ui/README.md).
 
 ## Storage behavior
 
@@ -92,12 +154,12 @@ TCP port 5000 exposes the complete MeshCore companion/admin protocol without sep
 
 ## Flashing
 
-The 1.2 RC1 release contains an application image and a merged recovery image for each mode:
+The 1.2 RC2 release contains an application image and a merged recovery image for each mode:
 
-- `NeonPocketMC-RCC6-1.2-RC1-BLE-app.bin`
-- `NeonPocketMC-RCC6-1.2-RC1-BLE-full-recovery-preserves-meshcore-settings.bin`
-- `NeonPocketMC-RCC6-1.2-RC1-WebAP-app.bin`
-- `NeonPocketMC-RCC6-1.2-RC1-WebAP-full-recovery-preserves-meshcore-settings.bin`
+- `NeonPocketMC-RCC6-1.2-RC2-BLE-app.bin`
+- `NeonPocketMC-RCC6-1.2-RC2-BLE-full-recovery-preserves-meshcore-settings.bin`
+- `NeonPocketMC-RCC6-1.2-RC2-WebAP-app.bin`
+- `NeonPocketMC-RCC6-1.2-RC2-WebAP-full-recovery-preserves-meshcore-settings.bin`
 
 - Normal install/update: flash the application `.bin` at **`0x10000`**.
 - Bootloader/partition recovery only: flash the merged recovery `.bin` at **`0x0`**.
@@ -106,10 +168,22 @@ The 1.2 RC1 release contains an application image and a merged recovery image fo
 Example with current `esptool`:
 
 ```text
-python -m esptool --chip esp32c6 --port COM21 write-flash 0x10000 NeonPocketMC-RCC6-1.2-RC1-BLE-app.bin
+python -m esptool --chip esp32c6 --port COM21 write-flash 0x10000 NeonPocketMC-RCC6-1.2-RC2-BLE-app.bin
 ```
 
 Replace `COM21` with the port actually shown by your computer. Use the Web/AP filename for Web mode. Verify the release checksums before flashing.
+
+### Ultimate v2 installation and recovery
+
+Normal Ultimate installation remains application-only at `0x10000`; it does not replace the bootloader, partition table, NVS, or SPIFFS:
+
+```text
+python -m esptool --chip esp32c6 --port COM21 write-flash 0x10000 NeonPocketMC-RCC6-Ultimate-v2.3.0-rc.4-BLE-app.bin
+```
+
+Use the USB filename for the native-USB binary companion or the Web filename for Web mode. Identity-preserving merged recovery images are provided separately and are for bootloader/partition recovery at `0x0`, not ordinary updates. Never erase the whole chip. The USB image carries the standard binary MeshCore companion protocol; it is not the text CLI.
+
+The WebUI accepts only a signed `NeonPocketMC-RCC6-Ultimate-Web-v2.3.0-rc.4.npu` package. Firmware verifies the RCC6 target, Web mode, application length, SHA-256, and Ed25519 signature before selecting the inactive OTA application slot. The existing bootloader does not guarantee automatic rollback from a boot-breaking app; keep USB access and the matching app/recovery images available. BLE and native-USB firmware have no Web OTA and are updated over USB only.
 
 ## Build
 
@@ -120,7 +194,11 @@ Local commands, if required:
 ```text
 pio run -e heltec_rcc6_companion_radio_ble
 pio run -e heltec_rcc6_companion_radio_web_ap
+pio run -e heltec_rcc6_ultimate_companion_ble
+pio run -e heltec_rcc6_ultimate_companion_web
 ```
+
+Ultimate USB CLI Rescue adds `np status`, NDJSON history export, confirmed history clear, retention, privacy, cadence, battery, and quick-phrase commands. Enter CLI Rescue with the normal early-boot Hold gesture; type `help` and see [the Ultimate 2.3 RC4 guide](docs/releases/2.3-RC4.md). Set the installed pack size with `set.batterysize 420` (or `np battery size 420`); use `0` to return to unknown.
 
 ## Hardware and power notes
 
@@ -129,6 +207,7 @@ pio run -e heltec_rcc6_companion_radio_web_ap
 - DIO flash mode
 - Protected single-cell 3.7 V Li-ion/LiPo only on `VBAT`; never connect an unregulated solar panel directly
 - Low-battery warning below 3.45 V, cleared above 3.60 V; no automatic low-voltage shutdown
+- RCC6 cannot sense raw VBUS from a charger, but it can detect an enumerated live USB host. A host disconnect clears charger-biased samples and starts a clean discharge-learning window; wall chargers and power banks still rely on the sustained falling-voltage fallback. Pack capacity does not calibrate the ADC. Compare against a multimeter and set the separate signed millivolt offset when needed.
 
 ## Upstream and license
 

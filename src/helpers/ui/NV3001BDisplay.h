@@ -15,6 +15,14 @@
   #define NV3001B_USE_FRAMEBUFFER 0
 #endif
 
+#ifndef NV3001B_USE_INDEXED_FRAMEBUFFER
+  #define NV3001B_USE_INDEXED_FRAMEBUFFER 0
+#endif
+
+#if NV3001B_USE_INDEXED_FRAMEBUFFER && !NV3001B_USE_FRAMEBUFFER
+  #error "NV3001B_USE_INDEXED_FRAMEBUFFER requires NV3001B_USE_FRAMEBUFFER"
+#endif
+
 #if NV3001B_USE_FAST_GPIO && !NV3001B_USE_SOFTWARE_SPI
   #error "NV3001B_USE_FAST_GPIO requires NV3001B_USE_SOFTWARE_SPI"
 #endif
@@ -39,6 +47,14 @@
   #define NV3001B_PANEL_HEIGHT 220
 #endif
 
+#ifndef NV3001B_SCREEN_WIDTH
+  #define NV3001B_SCREEN_WIDTH 220
+#endif
+
+#ifndef NV3001B_SCREEN_HEIGHT
+  #define NV3001B_SCREEN_HEIGHT 128
+#endif
+
 #if !NV3001B_USE_SOFTWARE_SPI && !defined(NV3001B_SPI_HOST)
   #define NV3001B_SPI_HOST HSPI
 #endif
@@ -58,16 +74,28 @@ class NV3001BDisplay : public DisplayDriver {
   int cursor_x = 0;
   int cursor_y = 0;
 #if NV3001B_USE_FRAMEBUFFER
+#if NV3001B_USE_INDEXED_FRAMEBUFFER
+  uint8_t* framebuffer = nullptr;
+  static constexpr uint16_t framebuffer_palette_capacity = 256;
+  uint16_t framebuffer_palette[framebuffer_palette_capacity] = {};
+  uint16_t framebuffer_palette_size = 0;
+#else
   uint16_t* framebuffer = nullptr;
+#endif
   bool framebuffer_allocation_attempted = false;
-  static constexpr uint8_t framebuffer_band_rows = 8;
-  static constexpr uint16_t framebuffer_max_dimension =
-      NV3001B_PANEL_WIDTH > NV3001B_PANEL_HEIGHT ? NV3001B_PANEL_WIDTH : NV3001B_PANEL_HEIGHT;
-  static constexpr uint8_t framebuffer_hash_capacity =
-      (framebuffer_max_dimension + framebuffer_band_rows - 1) / framebuffer_band_rows;
-  uint64_t framebuffer_band_hashes[framebuffer_hash_capacity] = {};
+  static constexpr uint8_t framebuffer_tile_width = 20;
+  static constexpr uint8_t framebuffer_tile_height = 8;
+  static constexpr uint8_t framebuffer_tile_columns =
+      (NV3001B_SCREEN_WIDTH + framebuffer_tile_width - 1) / framebuffer_tile_width;
+  static constexpr uint8_t framebuffer_tile_rows =
+      (NV3001B_SCREEN_HEIGHT + framebuffer_tile_height - 1) / framebuffer_tile_height;
+  static constexpr uint16_t framebuffer_tile_count =
+      framebuffer_tile_columns * framebuffer_tile_rows;
+  uint64_t framebuffer_tile_hashes[framebuffer_tile_count] = {};
   bool framebuffer_hashes_valid = false;
-  uint8_t framebuffer_flushes_since_full = 0;
+  uint16_t framebuffer_flushes_since_full = 0;
+  uint32_t framebuffer_last_flush_micros = 0;
+  uint16_t framebuffer_last_tiles_sent = 0;
 #endif
 
   void beginTransport();
@@ -80,6 +108,10 @@ class NV3001BDisplay : public DisplayDriver {
   void setAddrWindow(uint16_t x, uint16_t y, uint16_t w, uint16_t h);
   void writeColor(uint16_t rgb, uint32_t count);
 #if NV3001B_USE_FRAMEBUFFER
+#if NV3001B_USE_INDEXED_FRAMEBUFFER
+  bool framebufferPaletteIndex(uint16_t rgb, uint8_t& index);
+#endif
+  uint64_t hashFramebufferTile(uint16_t x, uint16_t y, uint16_t w, uint16_t h) const;
   void flushFramebuffer();
 #endif
   void fillPhysicalRect(int x, int y, int w, int h);
@@ -113,6 +145,12 @@ public:
   static const char* driverName() { return "NV3001B"; }
   static uint16_t physicalWidth() { return NV3001B_PANEL_WIDTH; }
   static uint16_t physicalHeight() { return NV3001B_PANEL_HEIGHT; }
+#if NV3001B_USE_FRAMEBUFFER
+  bool framebufferReady() const { return framebuffer != nullptr; }
+  uint32_t lastFlushMicros() const { return framebuffer_last_flush_micros; }
+  uint16_t lastTilesSent() const { return framebuffer_last_tiles_sent; }
+  static constexpr uint16_t tileCount() { return framebuffer_tile_count; }
+#endif
 
   bool isOn() override { return is_on; }
   void turnOn() override;
