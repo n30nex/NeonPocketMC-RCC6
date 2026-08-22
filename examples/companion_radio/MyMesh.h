@@ -3,6 +3,9 @@
 #include <Arduino.h>
 #include <Mesh.h>
 #include "AbstractUITask.h"
+#ifdef NEONPOCKET_ULTIMATE
+  #include "UltimateService.h"
+#endif
 
 /*------------ Frame Protocol --------------*/
 #define FIRMWARE_VER_CODE 13
@@ -103,6 +106,10 @@ public:
 #endif
 #ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
   bool sendQuickReplyToLatest(const char* text);
+#endif
+#ifdef NEONPOCKET_ULTIMATE
+  bool sendUltimateDirect(const uint8_t pubkey_prefix[6], const char* text);
+  bool sendUltimateChannel(uint8_t channel_index, const char* text);
 #endif
   void enterCLIRescue();
 
@@ -231,6 +238,14 @@ private:
   UIReplyTarget _ui_reply_target = UIReplyTarget::None;
   uint8_t _ui_reply_pubkey_prefix[6] = {};
   uint8_t _ui_reply_channel = 0;
+#endif
+#ifdef NEONPOCKET_ULTIMATE
+  uint32_t _ultimate_last_rx_millis = 0;
+  int16_t _ultimate_last_rx_rssi = 0;
+  int8_t _ultimate_last_rx_snr_q4 = 0;
+  uint8_t _ultimate_last_rx_payload = 0;
+  uint8_t _ultimate_delivery_hash[MAX_HASH_SIZE] = {};
+  bool _ultimate_delivery_active = false;
 #endif
 
   ContactsIterator _iter;

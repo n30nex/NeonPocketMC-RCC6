@@ -2,6 +2,14 @@
 #include <helpers/TxtDataHelpers.h>
 #include "../MyMesh.h"
 #include "target.h"
+#ifdef NEONPOCKET_UI
+  #include "NeonPocketSplash.h"
+#endif
+#ifdef NEONPOCKET_ULTIMATE
+  #include "UltimateUIScreen.h"
+  #include "../UltimateService.h"
+  #include <helpers/ui/NV3001BDisplay.h>
+#endif
 #ifdef RCC6_WEB_AP
   #include <helpers/esp32/SerialWebInterface.h>
   extern SerialWebInterface web_interface;
@@ -13,12 +21,34 @@
 #ifndef AUTO_OFF_MILLIS
   #define AUTO_OFF_MILLIS     15000   // 15 seconds
 #endif
-#define BOOT_SCREEN_MILLIS   3000   // 3 seconds
+#define BOOT_SCREEN_MILLIS   3000   // stock UI fallback
+
+static uint32_t displayAutoOffMillis() {
+#ifdef NEONPOCKET_ULTIMATE
+  return ultimate_service.getDisplayTimeoutMillis();
+#else
+  return AUTO_OFF_MILLIS;
+#endif
+}
 
 #ifdef NEONPOCKET_UI
-  #define NEON_FRAME_MILLIS       125
+#ifdef NEONPOCKET_ULTIMATE
+  #define NEON_FRAME_MILLIS       66
+#else
+  #define NEON_FRAME_MILLIS       NeonPocketSplash::FRAME_MILLIS
+#endif
   #define NEON_TRANSITION_MILLIS  300
   #define NEON_POWER_CONFIRM_MILLIS 8000
+#endif
+
+#ifdef NEONPOCKET_UI
+static uint16_t neonFrameMillis() {
+#ifdef NEONPOCKET_ULTIMATE
+  return ultimate_service.getRecommendedFrameMillis();
+#else
+  return NEON_FRAME_MILLIS;
+#endif
+}
 #endif
 
 #ifdef PIN_STATUS_LED
@@ -44,35 +74,6 @@ static constexpr int UI_MAX_UNREAD_MSGS = 32;
 #include "icons.h"
 
 #ifdef NEONPOCKET_UI
-static void drawNeonPocketMark(DisplayDriver& display, int x, int y, uint8_t phase) {
-  if (phase >= 1) {
-    display.setColor(0x07FF);  // cyan pocket
-    display.drawRect(x, y + 8, 40, 24);
-  }
-  if (phase >= 2) {
-    display.setColor(NEON_BLUE);  // cobalt mesh links
-    display.fillRect(x + 11, y + 26, 18, 2);
-    display.fillRect(x + 13, y + 23, 3, 2);
-    display.fillRect(x + 15, y + 20, 3, 2);
-    display.fillRect(x + 17, y + 17, 3, 2);
-    display.fillRect(x + 21, y + 17, 3, 2);
-    display.fillRect(x + 23, y + 20, 3, 2);
-    display.fillRect(x + 25, y + 23, 3, 2);
-  }
-  if (phase >= 3) {
-    display.setColor(NEON_GREEN);  // three mesh nodes
-    display.fillRect(x + 18, y + 13, 5, 5);
-    display.fillRect(x + 8, y + 24, 5, 5);
-    display.fillRect(x + 28, y + 24, 5, 5);
-  }
-  if (phase >= 4) {
-    display.setColor(0x07FF);  // packet sparks
-    display.fillRect(x + 7, y + 3, 4, 2);
-    display.fillRect(x + 19, y, 2, 5);
-    display.fillRect(x + 30, y + 2, 3, 3);
-  }
-}
-
 #ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
 static const char* const RCC6_QUICK_REPLIES[] = {
   "OK", "YES", "NO", "ON MY WAY", "NEED HELP", "73"
@@ -85,64 +86,31 @@ static constexpr unsigned long RCC6_QUICK_REPLY_SCAN_MILLIS = 800;
 
 class SplashScreen : public UIScreen {
   UITask* _task;
-  unsigned long dismiss_after;
-#ifdef NEONPOCKET_UI
   unsigned long started_at;
-#endif
   char _version_info[12];
 
 public:
   SplashScreen(UITask* task) : _task(task) {
     // strip off dash and commit hash by changing dash to null terminator
     // e.g: v1.2.3-abcdef -> v1.2.3
+#ifdef NEONPOCKET_UI
+    NeonPocketSplash::shortVersion(_version_info, sizeof(_version_info), FIRMWARE_VERSION);
+#else
     const char *ver = FIRMWARE_VERSION;
     const char *dash = strchr(ver, '-');
-
     int len = dash ? dash - ver : strlen(ver);
     if (len >= sizeof(_version_info)) len = sizeof(_version_info) - 1;
     memcpy(_version_info, ver, len);
     _version_info[len] = 0;
-
-    dismiss_after = millis() + BOOT_SCREEN_MILLIS;
-#ifdef NEONPOCKET_UI
-    started_at = millis();
 #endif
+    started_at = millis();
   }
 
   int render(DisplayDriver& display) override {
 #ifdef NEONPOCKET_UI
     const unsigned long elapsed = millis() - started_at;
-    uint8_t phase = 1 + elapsed / 180;
-    if (phase > 4) phase = 4;
-    const unsigned long progress_elapsed = elapsed < BOOT_SCREEN_MILLIS
-        ? elapsed : BOOT_SCREEN_MILLIS;
-    const int progress_width = 164 * progress_elapsed / BOOT_SCREEN_MILLIS;
-
-    drawNeonPocketMark(display, (display.width() - 40) / 2, 6, phase);
-    if (elapsed >= 240) {
-      display.setTextSize(2);
-      display.setColor(NEON_GREEN);
-      display.drawTextCentered(display.width() / 2, 43, "NEONPOCKETMC");
-    }
-    if (elapsed >= 480) {
-      display.setTextSize(1);
-      display.setColor(NEON_LIGHT);
-      display.drawTextCentered(display.width() / 2, 65, "MESHCORE COMPANION");
-    }
-
-    display.setColor(NEON_BLUE);
-    display.drawRect(26, 82, 168, 8);
-    display.setColor(NEON_YELLOW);
-    display.fillRect(28, 84, progress_width, 4);
-    display.setTextSize(1);
-    display.setColor(NEON_LIGHT);
-    display.setCursor(26, 99);
-    display.print(_version_info);
-    display.drawTextRightAlign(display.width() - 26, 99, FIRMWARE_BUILD_DATE);
-    display.setColor(NEON_BLUE);
-    display.drawTextCentered(display.width() / 2, 114, "LOADING RADIO");
-
-    return elapsed < BOOT_SCREEN_MILLIS ? NEON_FRAME_MILLIS : 500;
+    NeonPocketSplash::drawFrame(display, elapsed, _version_info, FIRMWARE_BUILD_DATE);
+    return elapsed < NeonPocketSplash::DURATION_MILLIS ? NEON_FRAME_MILLIS : 500;
 #else
     // meshcore logo
     display.setColor(NEON_BLUE);
@@ -170,7 +138,13 @@ public:
   }
 
   void poll() override {
-    if (millis() >= dismiss_after) {
+    const unsigned long duration =
+#ifdef NEONPOCKET_UI
+        NeonPocketSplash::DURATION_MILLIS;
+#else
+        BOOT_SCREEN_MILLIS;
+#endif
+    if (millis() - started_at >= duration) {
       _task->gotoHomeScreen();
     }
   }
@@ -740,6 +714,17 @@ class HomeScreen : public UIScreen {
 
 public:
 #ifdef NEONPOCKET_UI
+  void neonGoHome() {
+    _page = HomePage::FIRST;
+    _shutdown_init = false;
+    _transition_dir = -1;
+    _transition_started = 0;
+    _transition_pending = true;
+#ifdef NEONPOCKET_RCC6_UI_EXTENSIONS
+    _quick_reply_confirm = false;
+#endif
+  }
+
   void neonRequestShutdown() {
     _page = HomePage::SHUTDOWN;
     _shutdown_init = true;
@@ -1173,9 +1158,17 @@ class MsgPreviewScreen : public UIScreen {
 
   size_t renderMessagePage(DisplayDriver& display, const char* text, size_t offset) {
     static constexpr size_t chars_per_line = 33;
-    static constexpr int lines_per_page = 7;
+    static constexpr int first_line_y = 48;
+    static constexpr int line_height = 15;
+    static constexpr int glyph_height = 14;
+    static constexpr int card_bottom = 107;
+    static constexpr int lines_per_page = 4;
+    static_assert(first_line_y + (lines_per_page - 1) * line_height + glyph_height <= card_bottom,
+        "Inbox lines must fit inside the message card");
     const size_t text_len = strlen(text);
     size_t pos = offset > text_len ? 0 : offset;
+
+    display.setTextSize(1);
 
     for (int line_num = 0; line_num < lines_per_page && pos < text_len; line_num++) {
       while (pos < text_len && (text[pos] == ' ' || text[pos] == '\t' || text[pos] == '\r')) pos++;
@@ -1208,7 +1201,7 @@ class MsgPreviewScreen : public UIScreen {
       const size_t line_len = line_end - line_start;
       memcpy(line, text + line_start, line_len);
       line[line_len] = 0;
-      display.setCursor(10, 49 + line_num * 8);
+      display.setCursor(10, first_line_y + line_num * line_height);
       display.print(line);
       pos = next;
     }
@@ -1299,7 +1292,7 @@ public:
     display.setColor(NEON_BLUE);
     display.setCursor(4, 113);
     display.print(page_has_more ? "CLICK MORE" : "CLICK NEXT");
-    display.drawTextRightAlign(display.width() - 4, 113, "2X CLEAR ALL");
+    display.drawTextRightAlign(display.width() - 4, 113, "3X CLEAR ALL");
     return 1000;
 #else
     char tmp[16];
@@ -1404,7 +1397,7 @@ void UITask::sampleDiagnostics() {
 void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* node_prefs) {
   _display = display;
   _sensors = sensors;
-  _auto_off = millis() + AUTO_OFF_MILLIS;
+  _auto_off = millis() + displayAutoOffMillis();
 
 #if defined(PIN_USER_BTN)
   user_btn.begin();
@@ -1452,11 +1445,28 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
 #endif
 #endif
 
+#ifdef NEONPOCKET_ULTIMATE
+  splash = nullptr;
+  home = new UltimateUIScreen(this, &rtc_clock, sensors, node_prefs);
+  msg_preview = home;
+#else
   splash = new SplashScreen(this);
   home = new HomeScreen(this, &rtc_clock, sensors, node_prefs);
   msg_preview = new MsgPreviewScreen(this, &rtc_clock);
+#endif
+#ifdef NEONPOCKET_ULTIMATE
+  setCurrScreen(home);
+#else
   setCurrScreen(splash);
+#endif
 }
+
+#if defined(NEONPOCKET_UI) && defined(NEONPOCKET_ULTIMATE)
+void UITask::gotoMsgPreviewScreen() {
+  static_cast<UltimateUIScreen*>(home)->openInbox();
+  setCurrScreen(home);
+}
+#endif
 
 void UITask::showAlert(const char* text, int duration_millis, ColorVal color) {
   strcpy(_alert, text);
@@ -1493,7 +1503,7 @@ void UITask::startNeonPulse(ColorVal color, unsigned long duration_millis) {
     _pending_pulse_duration = 0;
     _pulse_started = now;
     _pulse_until = now + duration_millis;
-    if (_display != NULL) _auto_off = now + AUTO_OFF_MILLIS;
+    if (_display != NULL) _auto_off = now + displayAutoOffMillis();
   }
   _next_refresh = 0;
 }
@@ -1510,15 +1520,28 @@ bool UITask::handleNeonInput(char c) {
   }
 
   const bool can_confirm = isPowerConfirmArmed() && _display != NULL && _display->isOn() &&
-      curr == home && static_cast<HomeScreen*>(home)->neonIsPowerPage();
+      curr == home &&
+#ifdef NEONPOCKET_ULTIMATE
+      static_cast<UltimateUIScreen*>(home)->isPowerPage();
+#else
+      static_cast<HomeScreen*>(home)->neonIsPowerPage();
+#endif
   if (can_confirm) {
     _power_confirm_until = 0;
     gotoHomeScreen();
+#ifdef NEONPOCKET_ULTIMATE
+    static_cast<UltimateUIScreen*>(home)->requestShutdown();
+#else
     static_cast<HomeScreen*>(home)->neonRequestShutdown();
+#endif
   } else {
     _power_confirm_until = millis() + NEON_POWER_CONFIRM_MILLIS;
     gotoHomeScreen();
+#ifdef NEONPOCKET_ULTIMATE
+    static_cast<UltimateUIScreen*>(home)->showPowerConfirm();
+#else
     static_cast<HomeScreen*>(home)->neonShowPowerConfirm();
+#endif
     startNeonPulse(NEON_RED, NEON_TRANSITION_MILLIS);
   }
   _next_refresh = 0;
@@ -1634,6 +1657,7 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
 #endif
 
 #ifdef NEONPOCKET_UI
+  const bool display_was_off = _display != NULL && !_display->isOn();
   StrHelper::strncpy(_latest_sender, from_name, sizeof(_latest_sender));
   StrHelper::strncpy(_latest_preview, text, sizeof(_latest_preview));
   const ColorVal message_color = _next_message_color;
@@ -1641,12 +1665,19 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
   startNeonPulse(message_color);
 #endif
 
+#ifdef NEONPOCKET_ULTIMATE
+  _msgcount = ultimate_service.getSnapshot().unread_count;
+  const bool hide_locked = ultimate_service.getSettings().private_notifications && display_was_off;
+  if (hide_locked) _private_notification_locked = true;
+  if (!hide_locked) gotoMsgPreviewScreen();
+#else
   const int local_unread = ((MsgPreviewScreen *) msg_preview)->addPreview(path_len, from_name, text);
 #ifdef NEONPOCKET_UI
   _msgcount = local_unread;
   _unread_overflow = ((MsgPreviewScreen *) msg_preview)->hasOverflowed();
 #endif
   setCurrScreen(msg_preview);
+#endif
 
   if (_display != NULL) {
 #ifndef NEONPOCKET_UI
@@ -1655,7 +1686,7 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
     }
 #endif
     if (_display->isOn()) {
-    _auto_off = millis() + AUTO_OFF_MILLIS;  // extend the auto-off timer
+    _auto_off = millis() + displayAutoOffMillis();  // extend the auto-off timer
     _next_refresh = 100;  // trigger refresh
     }
   }
@@ -1725,6 +1756,9 @@ void UITask::loop() {
   char c = 0;
 #ifdef NEONPOCKET_UI
   const unsigned long event_now = millis();
+#ifdef NEONPOCKET_ULTIMATE
+  _msgcount = ultimate_service.getSnapshot().unread_count;
+#endif
   if (_power_confirm_until != 0 && (int32_t)(event_now - _power_confirm_until) >= 0) {
     _power_confirm_until = 0;
     _next_refresh = 0;
@@ -1733,7 +1767,7 @@ void UITask::loop() {
     _wake_pending = false;
     if (!_display->isOn()) _display->turnOn();
     const unsigned long wake_now = millis();
-    _auto_off = wake_now + AUTO_OFF_MILLIS;
+    _auto_off = wake_now + displayAutoOffMillis();
     if (_pending_pulse_duration > 0) {
       _pulse_started = wake_now;
       _pulse_until = wake_now + _pending_pulse_duration;
@@ -1881,7 +1915,7 @@ void UITask::loop() {
 #else
     curr->handleInput(c);
 #endif
-    _auto_off = millis() + AUTO_OFF_MILLIS;   // extend auto-off timer
+    _auto_off = millis() + displayAutoOffMillis();   // extend auto-off timer
     _next_refresh = 100;  // trigger refresh
   }
 
@@ -1913,13 +1947,13 @@ void UITask::loop() {
         _display->drawRect(12, y, _display->width() - 24, 40);
         _display->drawTextCentered(_display->width() / 2, y + 12, _alert);
       }
-      if (pulse_active && (((now - _pulse_started) / NEON_FRAME_MILLIS) % 2 == 0)) {
+      if (pulse_active && (((now - _pulse_started) / neonFrameMillis()) % 2 == 0)) {
         _display->setColor(_pulse_color);
         _display->fillRect(0, 0, _display->width(), 3);
         _display->fillRect(0, _display->height() - 3, _display->width(), 3);
       }
       if (alert_animating || pulse_active) {
-        _next_refresh = now + NEON_FRAME_MILLIS;
+        _next_refresh = now + neonFrameMillis();
       } else if (alert_active) {
         const unsigned long page_refresh = now + delay_millis;
         _next_refresh = (int32_t)(page_refresh - _alert_expiry) < 0
@@ -1943,6 +1977,11 @@ void UITask::loop() {
       }
 #endif
       _display->endFrame();
+#ifdef NEONPOCKET_ULTIMATE
+      NV3001BDisplay* native_display = static_cast<NV3001BDisplay*>(_display);
+      ultimate_service.setDisplayTransfer(native_display->lastFlushMicros(),
+                                          native_display->lastTilesSent());
+#endif
     }
 #if AUTO_OFF_MILLIS > 0
 #ifdef KEEP_DISPLAY_ON_USB
@@ -1951,7 +1990,7 @@ void UITask::loop() {
     // because OLED panels burn in quickly; only enable for LCD targets or
     // where the display is replaceable.
     if (board.isExternalPowered()) {
-      _auto_off = millis() + AUTO_OFF_MILLIS;
+      _auto_off = millis() + displayAutoOffMillis();
     }
 #endif
     if ((int32_t)(millis() - _auto_off) >= 0) {
@@ -2021,13 +2060,23 @@ char UITask::checkDisplayOn(char c) {
       _display->turnOn();   // turn display on and consume event
       c = 0;
     }
-    _auto_off = millis() + AUTO_OFF_MILLIS;   // extend auto-off timer
+#ifdef NEONPOCKET_ULTIMATE
+    else if (_private_notification_locked) {
+      _private_notification_locked = false;
+      c = 0;  // first gesture reveals private notification content only
+    }
+#endif
+    _auto_off = millis() + displayAutoOffMillis();   // extend auto-off timer
     _next_refresh = 0;  // trigger refresh
   }
   return c;
 }
 
 char UITask::handleLongPress(char c) {
+#ifdef NEONPOCKET_ULTIMATE
+  c = checkDisplayOn(c);
+  if (c == 0) return 0;
+#endif
   if (millis() - ui_started_at < 8000) {   // long press in first 8 seconds since startup -> CLI/rescue
     the_mesh.enterCLIRescue();
     c = 0;   // consume event
@@ -2050,8 +2099,21 @@ char UITask::handleDoubleClick(char c) {
 
 char UITask::handleTripleClick(char c) {
   MESH_DEBUG_PRINTLN("UITask: triple click triggered");
+#ifdef NEONPOCKET_UI
+  _power_confirm_until = 0;
+  c = checkDisplayOn(KEY_SELECT);
+  if (c == 0) return 0;
+#ifdef NEONPOCKET_ULTIMATE
+  static_cast<UltimateUIScreen*>(home)->handleTriplePress();
+#else
+  if (curr == msg_preview) curr->handleInput(KEY_ENTER);
+  static_cast<HomeScreen*>(home)->neonGoHome();
+  gotoHomeScreen();
+#endif
+#else
   checkDisplayOn(c);
   toggleBuzzer();
+#endif
   c = 0;
   return c;
 }

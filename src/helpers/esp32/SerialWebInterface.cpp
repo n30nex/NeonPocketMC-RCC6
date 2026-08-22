@@ -198,7 +198,12 @@ void SerialWebInterface::configureIdentity(const char* node_name) {
 void SerialWebInterface::registerHttpRoutes() {
   if (_routes_registered) return;
 
-  static const char* collected_headers[] = { HTTP_SESSION_HEADER, HTTP_ACK_HEADER };
+  static const char* collected_headers[] = {
+      HTTP_SESSION_HEADER, HTTP_ACK_HEADER
+#ifdef NEONPOCKET_ULTIMATE
+      , "X-NP-Confirm"
+#endif
+  };
   _http_server.collectHeaders(collected_headers,
       sizeof(collected_headers) / sizeof(collected_headers[0]));
   _http_server.on("/", HTTP_GET, [this]() { handleIndex(); });
