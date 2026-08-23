@@ -20,10 +20,17 @@ ui = text("examples/companion_radio/ui-new/UltimateUIScreen.cpp")
 ui_task = text("examples/companion_radio/ui-new/UITask.cpp")
 mesh = text("examples/companion_radio/MyMesh.cpp")
 board = text("variants/heltec_rcc6/heltec_rcc6.cpp")
+common_cli = text("src/helpers/CommonCLI.cpp")
 
 required = {
     "Ultimate BLE environment": "[env:heltec_rcc6_ultimate_companion_ble]" in platform,
     "Ultimate Web environment": "[env:heltec_rcc6_ultimate_companion_web]" in platform,
+    "MeshCore 1.17.1 target version": "-D FIRMWARE_VERSION='\"v1.17.1\"'" in platform and
+        '"Ultimate " NEONPOCKET_ULTIMATE_VERSION " / MC " FIRMWARE_VERSION' in ui and
+        "1.17.0+RX" not in ui,
+    "stored advert coordinates without GPS hardware":
+        common_cli.index('strcmp(command, "gps advert prefs")') <
+        common_cli.index("#if ENV_INCLUDE_GPS == 1"),
     "32 KiB gate": "NEONPOCKET_MEMORY_GATE_BYTES=32768" in platform,
     "indexed framebuffer": "NV3001B_USE_INDEXED_FRAMEBUFFER=1" in platform,
     "20 by 8 tiles": "framebuffer_tile_width = 20" in text("src/helpers/ui/NV3001BDisplay.h") and
