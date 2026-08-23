@@ -21,6 +21,8 @@ ui_task = text("examples/companion_radio/ui-new/UITask.cpp")
 mesh = text("examples/companion_radio/MyMesh.cpp")
 board = text("variants/heltec_rcc6/heltec_rcc6.cpp")
 common_cli = text("src/helpers/CommonCLI.cpp")
+share_command = common_cli.index('strcmp(command, "gps advert share")')
+gps_hardware_guard = common_cli.index("#if ENV_INCLUDE_GPS == 1", share_command)
 
 required = {
     "Ultimate BLE environment": "[env:heltec_rcc6_ultimate_companion_ble]" in platform,
@@ -29,14 +31,14 @@ required = {
         '"Ultimate " NEONPOCKET_ULTIMATE_VERSION " / MC " FIRMWARE_VERSION' in ui and
         "1.17.0+RX" not in ui,
     "stored advert coordinates without GPS hardware":
-        common_cli.index('strcmp(command, "gps advert prefs")') <
-        common_cli.index("#if ENV_INCLUDE_GPS == 1"),
-    "live advert coordinates require GPS hardware":
-        common_cli.index('strcmp(command, "gps advert share")') >
-        common_cli.index("#if ENV_INCLUDE_GPS == 1"),
+        common_cli.index('strcmp(command, "gps advert prefs")') < share_command,
+    "live advert coordinates require a GPS provider":
+        "_sensors->getLocationProvider() != NULL" in
+        common_cli[share_command:gps_hardware_guard],
     "GPS-less advert policy normalization":
         common_cli.count("_prefs->advert_loc_policy = ADVERT_LOC_PREFS;") >= 2 and
-        mesh.count("_prefs.advert_loc_policy = ADVERT_LOC_PREFS;") >= 2,
+        "_sensors->getLocationProvider() == NULL" in common_cli and
+        mesh.count("sensors.getLocationProvider() == nullptr") >= 2,
     "32 KiB gate": "NEONPOCKET_MEMORY_GATE_BYTES=32768" in platform,
     "indexed framebuffer": "NV3001B_USE_INDEXED_FRAMEBUFFER=1" in platform,
     "20 by 8 tiles": "framebuffer_tile_width = 20" in text("src/helpers/ui/NV3001BDisplay.h") and
