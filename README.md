@@ -4,7 +4,7 @@
 
 # NeonPocketMC-RCC6
 
-Experimental companion firmware for the **Heltec RadioCore RCC6** with its attached **220×128 NV3001B TFT**. It uses the official MeshCore **1.17.0** source baseline plus the post-release SX126x boosted-RX-gain fix intended for the next receiver maintenance release.
+Experimental companion firmware for the **Heltec RadioCore RCC6** with its attached **220×128 NV3001B TFT**. Its RCC6 targets are synchronized with the relevant MeshCore **1.17.1** receiver maintenance fixes.
 
 > [!CAUTION]
 > **RCC6 only—do not flash RC32, RC52, or other RadioCore hardware.** Attach a suitable antenna before transmitting.
@@ -94,7 +94,7 @@ The repository builds two separate application images:
 
 Both images include the native NeonPocket display, animated branded startup, local direct and `#channel` unread inbox, Nearby and Radio views, flood-scoped Advert action, 60-second screen timeout, battery warning, and one-button controls. RCC6 builds also add a cached Diagnostics page and a six-choice auto-scanning Quick Reply page that replies to the latest direct sender or channel without blocking radio callbacks.
 
-This branch uses the official MeshCore **1.17.0** baseline plus the relevant post-release SX126x boosted-RX-gain persistence fix (`6f491f30`). It does not claim a nonexistent official 1.17.1 tag. Each build embeds its own exact Git SHA.
+This branch carries the target-relevant MeshCore **1.17.1** receiver maintenance fixes, including SX126x boosted-RX-gain persistence (`6f491f30`). Each build embeds its own exact Git SHA.
 
 ## Storage behavior
 
