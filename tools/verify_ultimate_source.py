@@ -31,6 +31,9 @@ required = {
     "stored advert coordinates without GPS hardware":
         common_cli.index('strcmp(command, "gps advert prefs")') <
         common_cli.index("#if ENV_INCLUDE_GPS == 1"),
+    "live advert coordinates require GPS hardware":
+        common_cli.index('strcmp(command, "gps advert share")') >
+        common_cli.index("#if ENV_INCLUDE_GPS == 1"),
     "32 KiB gate": "NEONPOCKET_MEMORY_GATE_BYTES=32768" in platform,
     "indexed framebuffer": "NV3001B_USE_INDEXED_FRAMEBUFFER=1" in platform,
     "20 by 8 tiles": "framebuffer_tile_width = 20" in text("src/helpers/ui/NV3001BDisplay.h") and
