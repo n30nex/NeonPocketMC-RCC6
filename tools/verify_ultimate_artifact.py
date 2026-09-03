@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import shutil
 import struct
@@ -35,10 +36,14 @@ def size_tool() -> str:
     found = shutil.which(name)
     if found:
         return found
-    suffix = ".exe" if __import__("os").name == "nt" else ""
-    candidate = Path.home() / ".platformio" / "packages" / "toolchain-riscv32-esp" / "bin" / (name + suffix)
-    if candidate.is_file():
-        return str(candidate)
+    suffix = ".exe" if os.name == "nt" else ""
+    core_dirs = [Path.home() / ".platformio"]
+    if configured := os.environ.get("PLATFORMIO_CORE_DIR"):
+        core_dirs.insert(0, Path(configured))
+    for core_dir in core_dirs:
+        candidate = core_dir / "packages" / "toolchain-riscv32-esp" / "bin" / (name + suffix)
+        if candidate.is_file():
+            return str(candidate)
     raise FileNotFoundError(f"cannot locate {name}")
 
 
