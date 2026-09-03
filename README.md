@@ -25,7 +25,7 @@ This is a direct, checksum-verified capture of the RCC6 220×128 framebuffer run
 
 ## Release status
 
-The proven v1 line remains available as [`v1.2.0-rc.2`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.2). Current [`v2.3.0-rc.6`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v2.3.0-rc.6) keeps BLE, native USB, and authenticated Web modes while fixing saved-location adverts on GPS-less hardware. Use only files attached to a named release—short-lived Actions artifacts are development builds.
+The proven v1 line remains available as [`v1.2.0-rc.2`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v1.2.0-rc.2). Current [`v2.3.0-rc.7`](https://github.com/n30nex/NeonPocketMC-RCC6/releases/tag/v2.3.0-rc.7) keeps BLE, native USB, and authenticated Web modes while making the AP-to-LAN Web login explicit before and after restart. Use only files attached to a named release—short-lived build artifacts are development builds.
 
 Using RCC6 without the TFT? [NeonPocketMC-RCC6-Headless](https://github.com/n30nex/NeonPocketMC-RCC6-Headless) provides dedicated BLE, native USB/serial, and Wi-Fi Web/TCP companion images with no display or framebuffer code.
 
@@ -128,7 +128,7 @@ On first boot, Web/AP firmware starts a WPA-protected `MeshCore-<node>` setup ne
 http://192.168.4.1
 ```
 
-The Home-page setup wizard can join a local **2.4 GHz** Wi-Fi network. After restart, the TFT shows the assigned LAN address. Station-mode HTTP uses username `meshcore` and the same device password.
+The Home-page setup wizard can join a local **2.4 GHz** Wi-Fi network. It shows the exact LAN login before restart. After restart, the TFT and 115200-baud USB serial console show the assigned LAN address and login again. Station-mode HTTP uses username `meshcore` and the same eight-letter device key—not the home Wi-Fi password.
 
 TCP port 5000 exposes the complete MeshCore companion/admin protocol without separate application authentication. Enable local-network mode only on a trusted private LAN.
 
@@ -158,16 +158,16 @@ Replace `COM21` with the port actually shown by your computer. Use the Web/AP fi
 Normal Ultimate installation remains application-only at `0x10000`; it does not replace the bootloader, partition table, NVS, or SPIFFS:
 
 ```text
-python -m esptool --chip esp32c6 --port COM21 write-flash 0x10000 NeonPocketMC-RCC6-Ultimate-v2.3.0-rc.6-BLE-app.bin
+python -m esptool --chip esp32c6 --port COM21 write-flash 0x10000 NeonPocketMC-RCC6-Ultimate-v2.3.0-rc.7-BLE-app.bin
 ```
 
 Use the USB filename for the native-USB binary companion or the Web filename for Web mode. Identity-preserving merged recovery images are provided separately and are for bootloader/partition recovery at `0x0`, not ordinary updates. Never erase the whole chip. The USB image carries the standard binary MeshCore companion protocol; it is not the text CLI.
 
-The WebUI accepts only a signed `NeonPocketMC-RCC6-Ultimate-Web-v2.3.0-rc.6.npu` package. Firmware verifies the RCC6 target, Web mode, application length, SHA-256, and Ed25519 signature before selecting the inactive OTA application slot. The existing bootloader does not guarantee automatic rollback from a boot-breaking app; keep USB access and the matching app/recovery images available. BLE and native-USB firmware have no Web OTA and are updated over USB only.
+The WebUI accepts only a signed `NeonPocketMC-RCC6-Ultimate-Web-v2.3.0-rc.7.npu` package. Firmware verifies the RCC6 target, Web mode, application length, SHA-256, and Ed25519 signature before selecting the inactive OTA application slot. The existing bootloader does not guarantee automatic rollback from a boot-breaking app; keep USB access and the matching app/recovery images available. BLE and native-USB firmware have no Web OTA and are updated over USB only.
 
 ## Build
 
-GitHub Actions is the supported build path. The `RCC6 Companion Build` workflow checks out the exact branch SHA, verifies the embedded WebUI, builds both environments, validates the ESP32 images, and publishes short-lived exact-SHA artifacts.
+The release workflow and the Pi-local release path both check the exact source SHA, verify the embedded WebUI, build every maintained environment, and validate the ESP32 images. RC7 is built locally on the Canadaverse Pi 5 while hosted Actions minutes are unavailable.
 
 Local commands, if required:
 

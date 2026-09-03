@@ -21,12 +21,15 @@ ui_task = text("examples/companion_radio/ui-new/UITask.cpp")
 mesh = text("examples/companion_radio/MyMesh.cpp")
 board = text("variants/heltec_rcc6/heltec_rcc6.cpp")
 common_cli = text("src/helpers/CommonCLI.cpp")
+serial_web = text("src/helpers/esp32/SerialWebInterface.cpp")
 share_command = common_cli.index('strcmp(command, "gps advert share")')
 gps_hardware_guard = common_cli.index("#if ENV_INCLUDE_GPS == 1", share_command)
 
 required = {
     "Ultimate BLE environment": "[env:heltec_rcc6_ultimate_companion_ble]" in platform,
     "Ultimate Web environment": "[env:heltec_rcc6_ultimate_companion_web]" in platform,
+    "web login survives AP handoff": all(value in serial_web for value in
+        ['\\"loginUser\\"', '\\"loginKey\\"', '"Web login: %s / %s']),
     "MeshCore 1.17.1 target version": "-D FIRMWARE_VERSION='\"v1.17.1\"'" in platform and
         '"Ultimate " NEONPOCKET_ULTIMATE_VERSION " / MC " FIRMWARE_VERSION' in ui and
         "1.17.0+RX" not in ui,
